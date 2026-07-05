@@ -1,0 +1,43 @@
+{
+  "name": "echo-workbench",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1 --port 53815 --configLoader native",
+    "setup:riva": "python3.11 -m venv .venv && .venv/bin/python -m pip install -r requirements-asr.txt",
+    "test": "npm run test:export && npm run test:asr && npm run test:asr-language && npm run test:asr-input && npm run test:asr-presets && npm run test:asr-api && npm run test:model-text && npm run test:model-response && npm run test:chat-payload && npm run test:product-copy && npm run test:errors && npm run test:workspace-defaults && npm run test:provider-status && npm run test:provider-key-ui && npm run test:model-cancel-ui && npm run test:workspace && npm run test:video-preview && npm run test:product-flow",
+    "test:export": "node scripts/test-export-content.mjs",
+    "test:asr": "node scripts/test-asr-rows.mjs",
+    "test:asr-language": "node scripts/test-asr-language.mjs",
+    "test:asr-input": "node scripts/test-asr-input-strategy.mjs",
+    "test:asr-presets": "node scripts/test-asr-presets.mjs",
+    "test:asr-api": "node scripts/test-asr-api.mjs",
+    "test:model-text": "node scripts/test-model-text.mjs",
+    "test:model-response": "node scripts/test-model-response.mjs",
+    "test:chat-payload": "node scripts/test-chat-payload.mjs",
+    "test:product-copy": "node scripts/test-product-copy.mjs",
+    "test:errors": "node scripts/test-error-messages.mjs",
+    "test:workspace-defaults": "node scripts/test-workspace-defaults.mjs",
+    "test:provider-status": "node scripts/test-provider-status.mjs",
+    "test:provider-key-ui": "node scripts/test-provider-key-ui.mjs",
+    "test:model-cancel-ui": "node scripts/test-model-cancel-ui.mjs",
+    "test:workspace": "node scripts/test-workspace-persistence.mjs",
+    "test:video-preview": "node scripts/test-video-preview-overlay.mjs",
+    "test:product-flow": "node scripts/test-product-flow.mjs",
+    "test:text-live": "node scripts/test-live-text-model.mjs",
+    "test:asr-live": "node scripts/test-live-asr.mjs",
+    "build": "vite build --configLoader native",
+    "preview": "vite preview --host 127.0.0.1 --port 53815 --configLoader native"
+  },
+  "dependencies": {
+    "@vitejs/plugin-react": "5.0.4",
+    "lucide-react": "^1.20.0",
+    "react": "19.2.0",
+    "react-dom": "19.2.0",
+    "vite": "6.4.2"
+  },
+  "devDependencies": {
+    "playwright": "^1.61.0"
+  }
+}

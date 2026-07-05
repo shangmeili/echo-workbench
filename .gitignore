@@ -1,0 +1,17 @@
+node_modules/
+dist/
+output/
+.playwright-cli/
+.npm-cache/
+.npmrc
+.venv/
+__pycache__/
+*.py[cod]
+.env
+.env.*
+!.env.example
+.echo-workspace.local.json
+.echo-workspace/
+qa/
+.DS_Store
+npm-debug.log*
