@@ -1,13 +1,30 @@
 # 回响工作台
 
-本地优先的视频智能字幕、视频转写、音频转写和字幕文件翻译工作台。
+回响工作台是一个本地优先的音视频转写与字幕生产工具，面向视频字幕校对、会议/访谈转写、音频逐字稿整理和字幕文件翻译等工作流。
+
+它把媒体预览、云端 ASR 接入、逐段校对、文本模型校正、翻译和导出放在同一个工作台中。项目文件保存在用户选择的本地工作区，API Key 和模型配置保留在本机环境中，适合个人或小团队在可控环境下处理音视频内容。
+
+## English Overview
+
+Echo Workbench is a local-first workspace for audio/video transcription, subtitle production, proofreading, translation, and export.
+
+It combines media preview, cloud ASR integrations, segment-level review, LLM-assisted correction, optional translation, and subtitle/transcript export in one workflow. Project files are stored in a local workspace selected by the user, while API keys and model preferences remain on the local machine.
+
+Main workflows:
+
+- Video subtitles: upload a video, generate or import editable subtitle segments, proofread them against the media, optionally translate them, and export SRT, VTT, or TXT.
+- Video transcription: upload a video, generate an editable transcript, proofread the text, and export TXT, Markdown, SRT, or VTT.
+- Audio transcription: upload audio, generate or import transcript text, proofread it, and export TXT, Markdown, SRT, or VTT.
+- Subtitle translation: import or paste SRT/VTT/TXT subtitles, translate them to the target language, and export source, translated, or bilingual subtitles.
+
+Echo Workbench does not bundle a local Whisper model or depend on local ffmpeg. Audio/video transcription is provided by external ASR services such as Alibaba Cloud DashScope Fun-ASR, DashScope Qwen3-ASR file transcription, OpenAI Whisper-compatible endpoints, Groq Whisper, NVIDIA NIM HTTP endpoints, or custom NVIDIA Riva gRPC deployments. MiniMax-M3 and other text models are used for transcript cleanup, structuring, summarization, and translation, not for ASR itself.
 
 ## 当前可用功能
 
-- 视频智能字幕：上传视频进行预览校对，按当前转写服务生成可编辑字幕；默认百炼 Fun-ASR 会直接提交原始音视频，百炼 Qwen3-ASR 文件转写也可作为可选预设，其他仅接收音频的端点才会从视频内音轨生成输入。也可导入文件/粘贴字幕文本，需要跨语言时生成译文并导出 SRT、VTT 或 TXT。
-- 视频转写：上传视频后按当前转写服务生成可编辑逐字稿；默认百炼 Fun-ASR 会直接提交原始音视频，百炼 Qwen3-ASR 文件转写也可作为可选预设，其他仅接收音频的端点才会从视频内音轨生成输入。也可导入已有转写文本，校对并导出 TXT、Markdown、SRT 或 VTT。
-- 音频转写：上传音频后调用云端 ASR 生成转写文本，也可导入已有转写文本，校对并导出 TXT、Markdown、SRT 或 VTT。
-- 字幕文件翻译：导入或粘贴 SRT/VTT/TXT，翻译为目标语言并导出双语字幕。
+- 视频智能字幕：上传视频进行预览和字幕校对，调用当前转写服务生成可编辑字幕；也可以导入或粘贴已有字幕文本，再进行翻译和导出。
+- 视频转写：上传视频生成可编辑逐字稿，支持导入已有转写文本，校对后导出 TXT、Markdown、SRT 或 VTT。
+- 音频转写：上传音频生成转写文本，支持导入已有文本，校对后导出 TXT、Markdown、SRT 或 VTT。
+- 字幕文件翻译：导入或粘贴 SRT/VTT/TXT，翻译为目标语言，并按原文、译文或双语模式导出。
 - 校对表支持编辑时间码、说话人、原文、译文，并可新增、拆分、合并、单条重译或删除段落。
 - 粘贴 TXT/逐字稿时支持常见时间码前缀，例如 `00:00:12 文本` 或 `[00:00.000] 说话人: 文本`。
 - ASR 返回后会保留原始可编辑段落；若已配置文本模型，工作台会执行一次保守校正，只处理断句、标点、空格和明显识别错字，不扩写内容。
@@ -32,11 +49,11 @@
 - 模型输入预设包含 MiniMax-M3、MiniMax-M2.7、MiniMax-M2.5、MiniMax-M2.1、MiniMax-M2 及高速版本；实际可用范围以当前账号读取到的模型列表为准。
 - 模型连接测试和模型列表读取分别记录状态，避免把模型列表读取失败误判为连接失败。
 - 本地术语库和项目内“转写提示”会进入校正、整理和翻译提示词，帮助保持专有名词一致。
-- 首次使用需要由用户选择或输入本地工作区路径；项目媒体、校对表、整理稿和导出设置会保存到工作区，未配置时不会导入素材或建立历史项目。
+- 首次使用需要选择或输入本地工作区路径；项目媒体、校对表、整理稿和导出设置会保存到工作区，未配置时不会导入素材或建立历史项目。
 
-## 不伪装的边界
+## 功能边界与接入说明
 
-MiniMax-M3 当前在本项目中用于转写/字幕文本后的清理、摘要和跨语言翻译，不作为 ASR 转写模型。
+MiniMax-M3 当前用于转写/字幕文本后的校正、整理、摘要和跨语言翻译，不作为 ASR 转写模型。
 
 音频/视频转写由外部 ASR 端点提供。默认预设为阿里云百炼 Fun-ASR，适合中文和多语言录音文件转写；也内置阿里云百炼 Qwen3-ASR 文件转写预设，二者都需要用户填写 DashScope API Key，并通过原始文件上传与异步任务轮询返回结果。OpenAI Whisper API 和 Groq Whisper 都走 OpenAI-compatible `/audio/transcriptions` 上传管线，工作台会请求 verbose JSON、分段和词级时间戳。通用 HTTP transcription 端点需要用户填写可访问的 Endpoint、ASR Key 和必要模型名；这类端点通常从视频内音轨生成音频输入，只有确认端点支持视频文件时才建议改为直接提交原始视频。NVIDIA NIM HTTP 适合自部署或远程托管的 `/v1/audio/transcriptions` 音频端点，不依赖本机 Python SDK；自定义 Riva gRPC 仅适合已经拥有可用 Riva 地址、Function ID 和服务端 Riva Python 客户端的部署。如果模型没有返回词级时间戳，工作台会按文本内容和媒体时长自动分段，并要求校对时间轴。
 
@@ -50,7 +67,7 @@ npm run setup:riva
 
 本地 API 会优先使用 HTTP transcription 端点；选择 Riva gRPC 时，会优先使用 `.venv/bin/python` 检测和调用 Riva SDK，部署到其他路径时可设置 `NVIDIA_RIVA_PYTHON` 指向对应 Python。
 
-设置页不会假装 gRPC 依赖可用；如果当前服务未检测到 `nvidia-riva-client`，模型配置页会提示切换 HTTP 端点或安装依赖。
+如果当前服务未检测到 `nvidia-riva-client`，模型配置页会提示切换 HTTP 端点或安装依赖。
 
 ## 本地密钥
 
