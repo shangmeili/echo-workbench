@@ -643,7 +643,7 @@ export function sanitizeNvidiaAsrError(error) {
     return "云端转写端点不可用。需要在模型配置中切换预设，或核对 HTTP Endpoint / Riva Function ID。";
   }
   if (/unavailable model requested|language_code|unsupported language|invalid_argument/.test(lower)) {
-    return "当前转写模型拒绝了识别语言或音频参数。系统会自动尝试服务默认语言；如果仍失败，说明当前端点与这段素材不兼容。";
+    return "当前转写端点拒绝了识别语言或音频参数。系统已避免写入不完整结果；该端点与当前测试样本或素材不兼容。";
   }
   if (/deadline|timeout|timed out|unavailable|temporarily unavailable/.test(lower)) {
     return "云端转写请求超时或上游暂不可用。系统已保留当前任务，可稍后重试；长音频建议切换更稳定的模型或缩短文件后再试。";
@@ -652,7 +652,7 @@ export function sanitizeNvidiaAsrError(error) {
     return "云端转写上游推理请求未完成。系统未写入不完整结果；连续失败时需要切换转写模型或核对当前端点权限。";
   }
   if (/invalid|audio|encoding|sample|format|decode|wav|flac/.test(lower)) {
-    return "云端转写服务无法识别当前音频输入。系统已保留媒体；可更换清晰 WAV/FLAC 音频，或在视频流程中补充独立音频文件后重试。";
+    return "云端转写服务无法识别当前音频输入。系统已保留媒体且未写入不完整结果；该端点不兼容当前音频格式。";
   }
   if (/dashscope|task_status|transcription_url|oss|policy|upload/.test(lower)) {
     return "百炼转写任务未完成。系统已保留当前任务；连续失败时需要更换 DashScope Key、模型权限、文件格式或网络环境后重试。";

@@ -76,6 +76,7 @@ function splitCjkTextByReadableLength(value, maxUnits) {
   let remaining = clean;
   while (transcriptWeight(remaining) > maxUnits) {
     const minimum = Math.max(8, Math.floor(maxUnits * 0.62));
+    if (transcriptWeight(remaining) <= maxUnits + 4) break;
     let splitIndex = -1;
     for (const pattern of softBreakPatterns) {
       const index = remaining.lastIndexOf(pattern, maxUnits);
@@ -87,6 +88,8 @@ function splitCjkTextByReadableLength(value, maxUnits) {
     if (splitIndex < minimum) {
       splitIndex = maxUnits;
     }
+    const tailLength = transcriptWeight(remaining.slice(splitIndex).trim());
+    if (tailLength > 0 && tailLength < 5 && transcriptWeight(remaining) <= maxUnits + tailLength) break;
     const part = remaining.slice(0, splitIndex).trim();
     if (part) result.push(part);
     remaining = remaining.slice(splitIndex).trim();
@@ -254,7 +257,7 @@ function isLatinText(text) {
 }
 
 function maxMergedUnits(text) {
-  return isLatinText(text) ? 12 : 18;
+  return isLatinText(text) ? 10 : 16;
 }
 
 function isShortFragment(row) {

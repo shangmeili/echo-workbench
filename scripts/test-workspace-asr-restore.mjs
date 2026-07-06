@@ -33,7 +33,14 @@ async function createWorkspaceProject(baseUrl, id = "restore_asr_project", name 
     },
     tool: "video-transcribe",
     rows: [],
-    workspaceState: { sourceLanguage, targetLanguage: "英文", exportMode: "source", draft: "", transcriptionContext: "" },
+    workspaceState: {
+      sourceLanguage,
+      targetLanguage: "英文",
+      exportMode: "source",
+      draft: "",
+      transcriptionContext: "",
+      ...(options.workspaceStatePatch || {}),
+    },
     media: { name, type: "video/mp4", size: 128, duration: 8 },
     asrAudio: null,
     updatedAt: Date.now(),
@@ -83,6 +90,16 @@ try {
   });
   assert.equal(configureResponse.ok, true, await configureResponse.text());
   await createWorkspaceProject(baseUrl);
+  await createWorkspaceProject(baseUrl, "restore_failed_asr_project", "restore-failed-asr-video.mp4", {
+    workspaceStatePatch: {
+      lastTranscriptionStatus: {
+        state: "error",
+        message: "转写未完成：调用转写服务失败：当前端点拒绝了识别语言或音频参数。系统已避免写入不完整结果。",
+        stage: "调用转写服务",
+        retryable: true,
+      },
+    },
+  });
 
   browser = await chromium.launch({ headless: true });
   const page = await browser.newPage({ viewport: { width: 1280, height: 720 } });
@@ -111,6 +128,14 @@ try {
   await startButton.click();
   await page.waitForFunction(() => document.querySelector(".subtitle-table .table-row:not(.table-head)")?.textContent?.includes("恢复项目转写测试"));
   assert.equal(workspaceAsrCalled, true, "restored media should call the workspace ASR endpoint");
+
+  await page.goto(`${baseUrl}/#workbench/video-transcribe/restore_failed_asr_project`, { waitUntil: "networkidle" });
+  await page.reload({ waitUntil: "networkidle" });
+  await page.waitForFunction(() => document.querySelector(".workspace-title strong")?.textContent?.includes("视频转写"));
+  await page.waitForFunction(() => document.querySelector(".transcription-status-card.error")?.textContent?.includes("当前端点拒绝了识别语言或音频参数"));
+  assert.match(await page.locator(".transcription-status-card.error").innerText(), /阶段：调用转写服务/);
+  assert.equal(await page.locator(".subtitle-table").count(), 0, "restored failed transcription should not create proofreading rows");
+  assert.equal(await page.getByRole("button", { name: /开始转写/ }).first().isEnabled(), true, "restored failed transcription should keep a retryable start action visible");
 
   await createWorkspaceProject(baseUrl, "restore_riva_video_project", "restore-riva-video.mp4");
   await page.evaluate(() => {

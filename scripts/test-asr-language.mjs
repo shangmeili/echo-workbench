@@ -12,15 +12,19 @@ assert.equal(getAsrLanguageCode({ transport: "nvidia-riva-grpc", model: "parakee
 
 assert.match(
   getAsrLanguageCompatibilityWarning({ model: "parakeet-ctc-1.1b-asr" }, "中文"),
-  /HTTP 转写端点/,
+  /已阻止提交/,
+);
+assert.doesNotMatch(
+  getAsrLanguageCompatibilityWarning({ model: "parakeet-ctc-1.1b-asr" }, "中文"),
+  /工作台选择|匹配的源语言|英文素材/,
 );
 assert.match(
   getAsrLanguageCompatibilityWarning({ transport: "nvidia-riva-grpc", model: "parakeet-1.1b-rnnt-multilingual-asr" }, "中文"),
-  /英文素材/,
+  /已阻止提交/,
 );
 assert.match(
   getAsrLanguageCompatibilityWarning({ transport: "nvidia-riva-grpc", model: "whisper-large-v3" }, "中文"),
-  /英文素材/,
+  /已阻止提交/,
 );
 assert.equal(getAsrLanguageCompatibilityWarning({ model: "parakeet-ctc-1.1b-asr" }, "英文"), "");
 assert.equal(getAsrLanguageCompatibilityWarning({ model: "whisper-large-v3" }, "中文"), "");

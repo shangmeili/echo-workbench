@@ -10,6 +10,7 @@ export const defaultWorkspaceState = {
     includeSpeakers: true,
   },
   translationRequested: false,
+  lastTranscriptionStatus: null,
 };
 
 export function workspaceDefaultsForFeature(id) {

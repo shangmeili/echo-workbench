@@ -46,10 +46,10 @@ export function getAsrLanguageCode(asrProvider = {}, sourceLanguage = "") {
 export function getAsrLanguageCompatibilityWarning(asrProvider = {}, sourceLanguage = "") {
   if (!sourceLanguage || sourceLanguage === "自动识别") return "";
   if (ENGLISH_ONLY_MODELS.has(asrProvider.model) && sourceLanguage !== "英文") {
-    return "当前转写模型偏英文；中文、日文、韩文或西班牙文素材建议切换到明确支持对应语言的 HTTP 转写端点。";
+    return "当前转写服务不支持该源语言，工作台已阻止提交，避免生成空结果或错误结果。请在模型配置中改用支持该语言的转写服务。";
   }
   if (asrProvider.transport === "nvidia-riva-grpc" && HOSTED_RIVA_ENGLISH_PREFERRED_MODELS.has(asrProvider.model) && sourceLanguage !== "英文") {
-    return "当前 NVIDIA 托管 Riva 预设仅作为英文素材的稳定转写路径。如果素材是英文，请选择英文源语言；非英文素材请切换到明确支持该语言的 ASR 服务。";
+    return "当前 NVIDIA 托管 Riva 预设无法稳定处理该源语言，工作台已阻止提交。请在模型配置中改用支持该语言的转写服务。";
   }
   return "";
 }

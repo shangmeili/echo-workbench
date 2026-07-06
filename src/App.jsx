@@ -864,9 +864,20 @@ function formatAsrFailureMessage(error) {
   const raw = String(error?.message || "").trim();
   const stageText = error?.stage ? `${error.stage}失败：` : "";
   if (isTransientAsrConnectionError(error)) {
-    return `转写未完成：${stageText}转写服务连接中断，系统已自动重试并保留当前任务。没有生成不完整结果，可以直接再次开始，或在模型配置中切换可用转写服务。`;
+    return `转写未完成：${stageText}转写服务连接中断，系统已自动重试并保留当前任务。没有生成不完整结果，可以直接再次开始；如果连续失败，请在模型配置中改用可用转写服务。`;
   }
-  return `转写未完成：${stageText}${raw || "云端转写服务未返回可用结果"}。已保留当前媒体和已有校对内容，可以直接重试或切换转写服务。`;
+  return `转写未完成：${stageText}${raw || "云端转写服务未返回可用结果"}。已保留当前媒体和已有校对内容，可以直接重试；如果连续失败，请在模型配置中修正转写服务。`;
+}
+
+function formatAsrConfigTestFailure(error) {
+  const raw = String(error?.message || "").trim();
+  if (isAsrLanguageParameterError(error)) {
+    return "转写服务测试失败：当前端点拒绝了测试样本的语言或音频参数。系统没有保存测试通过状态；请在模型配置中改用支持当前语言和音频格式的转写服务后再测试。";
+  }
+  if (isTransientAsrConnectionError(error)) {
+    return "转写服务测试失败：当前端点连接中断或网络不可达。系统没有保存测试通过状态；请稍后重试，或在模型配置中改用可访问的转写服务。";
+  }
+  return raw || "转写服务测试失败：当前配置未返回可用结果。系统没有保存测试通过状态。";
 }
 
 function getAssistantText(data) {
@@ -1416,6 +1427,19 @@ function WorkbenchView({ activeTool, onBackHome, rows, setRows, media, setMedia,
   const setExportFormat = (value) => setWorkspaceState((current) => ({ ...current, exportFormat: value }));
   const setExportOption = (key, value) => setWorkspaceState((current) => ({ ...current, exportOptions: { ...defaultWorkspaceState.exportOptions, ...(current.exportOptions || {}), [key]: value } }));
   const setTranslationRequested = (value) => setWorkspaceState((current) => ({ ...current, translationRequested: value }));
+  const setWorkbenchTranscriptionStatus = (status, options = {}) => {
+    const nextStatus = { state: "idle", message: "", ...status };
+    setTranscriptionStatus(nextStatus);
+    if (options.persist) {
+      setWorkspaceState((current) => ({ ...current, lastTranscriptionStatus: nextStatus }));
+    }
+  };
+  const clearWorkbenchTranscriptionStatus = (options = {}) => {
+    setTranscriptionStatus({ state: "idle", message: "" });
+    if (options.persist) {
+      setWorkspaceState((current) => ({ ...current, lastTranscriptionStatus: null }));
+    }
+  };
   const mediaInputRef = useRef(null);
   const audioTrackInputRef = useRef(null);
   const subtitleInputRef = useRef(null);
@@ -1431,6 +1455,7 @@ function WorkbenchView({ activeTool, onBackHome, rows, setRows, media, setMedia,
   const asrAbortRef = useRef(null);
   const modelAbortRef = useRef(null);
   const previousUndoScopeRef = useRef({ activeProjectId, activeTool });
+  const previousTranscriptionStatusScopeRef = useRef({ activeProjectId, activeTool });
   const previousRowsLengthRef = useRef(rows.length);
   const [undoDepth, setUndoDepth] = useState(0);
   const [redoDepth, setRedoDepth] = useState(0);
@@ -1686,13 +1711,19 @@ function WorkbenchView({ activeTool, onBackHome, rows, setRows, media, setMedia,
   const selectedFeature = featureCards.find((item) => item.id === activeTool) || featureCards[0];
 
   useEffect(() => {
+    const previousScope = previousTranscriptionStatusScopeRef.current;
+    const scopeChanged = previousScope.activeTool !== activeTool || previousScope.activeProjectId !== activeProjectId;
+    previousTranscriptionStatusScopeRef.current = { activeProjectId, activeTool };
+    if (!scopeChanged) return;
     setManualImportOpen(false);
-    setTranscriptionStatus({ state: "idle", message: "" });
-  }, [activeTool]);
+    clearWorkbenchTranscriptionStatus();
+  }, [activeProjectId, activeTool]);
 
   useEffect(() => {
-    setTranscriptionStatus({ state: "idle", message: "" });
-  }, [media?.url]);
+    const savedStatus = workspaceState.lastTranscriptionStatus;
+    if (!savedStatus || rows.length || transcriptionStatus.state !== "idle") return;
+    setTranscriptionStatus(savedStatus);
+  }, [rows.length, transcriptionStatus.state, workspaceState.lastTranscriptionStatus]);
 
   useEffect(() => {
     if (!manualImportOpen) return undefined;
@@ -2191,6 +2222,7 @@ function WorkbenchView({ activeTool, onBackHome, rows, setRows, media, setMedia,
       return;
     }
     if (!confirmInterruptingWork("导入新媒体")) return;
+    clearWorkbenchTranscriptionStatus({ persist: true });
     setPendingImport(null);
     const hasExistingRows = rows.length > 0;
     const replacingMedia = Boolean(media?.file);
@@ -2456,7 +2488,14 @@ function WorkbenchView({ activeTool, onBackHome, rows, setRows, media, setMedia,
     asrAbortRef.current.abort();
     asrAbortRef.current = null;
     setBusy("");
-    setMessage("已取消转写。已保留当前媒体和已有校对内容。");
+    const cancelMessage = "已取消转写。已保留当前媒体和已有校对内容。";
+    setMessage(cancelMessage);
+    setWorkbenchTranscriptionStatus({
+      state: "cancelled",
+      message: cancelMessage,
+      stage: "取消转写",
+      retryable: true,
+    }, { persist: true });
   };
 
   const restoreTextOnlyAsrResult = async (result, signal) => {
@@ -2493,29 +2532,30 @@ ${rawText}`;
     if (!workspaceReady || !hasTranscriptionInput || !transcriptionReady || !asrLanguageCompatible) {
       const errorMessage = `转写未开始：${startBlockedMessage || startTranscriptionHint}`;
       setMessage(errorMessage);
-      setTranscriptionStatus({
+      setWorkbenchTranscriptionStatus({
         state: "error",
         message: errorMessage,
         stage: !workspaceReady || !hasTranscriptionInput ? "准备转写输入" : "读取转写配置",
         retryable: Boolean(workspaceReady && hasTranscriptionInput),
-      });
+      }, { persist: true });
       return;
     }
     const compatibilityMessage = getAsrLanguageCompatibilityWarning(asrProvider, sourceLanguage);
     if (compatibilityMessage) {
       const errorMessage = `转写未开始：${compatibilityMessage}`;
       setMessage(errorMessage);
-      setTranscriptionStatus({ state: "error", message: errorMessage, stage: "读取转写配置", retryable: true });
+      setWorkbenchTranscriptionStatus({ state: "error", message: errorMessage, stage: "读取转写配置", retryable: true }, { persist: true });
       return;
     }
     const abortController = new AbortController();
     asrAbortRef.current = abortController;
     setBusy("asr");
     setMessage("");
-    setTranscriptionStatus({ state: "running", message: "正在准备转写任务。", stage: "准备转写输入" });
+    setWorkbenchTranscriptionStatus({ state: "running", message: "正在准备转写任务。", stage: "准备转写输入" });
+    setWorkspaceState((current) => ({ ...current, lastTranscriptionStatus: null }));
     const setTranscriptionProgress = (text, stage = "") => {
       setMessage(text);
-      setTranscriptionStatus({ state: "running", message: text, stage });
+      setWorkbenchTranscriptionStatus({ state: "running", message: text, stage });
     };
     const submitAsrInput = async (input, requestedLanguageCode) => {
       const request = (languageCodeForRequest) => (input.workspaceProjectId
@@ -2568,7 +2608,7 @@ ${rawText}`;
           }]
           : [];
       if (!asrInputs.length) {
-        throw new Error("本地副本无法作为当前转写服务的输入。请切换为百炼 ASR，或重新上传媒体文件。");
+        throw new Error("本地副本无法作为当前转写服务的输入。工作台没有提交空任务；请重新上传媒体，或在模型配置中改用支持原始媒体文件的转写服务。");
       }
       const languageCode = getAsrLanguageCode(asrProvider, sourceLanguage);
       const parsedRows = [];
@@ -2588,7 +2628,7 @@ ${rawText}`;
       throwIfAsrAborted(abortController.signal);
       const parsed = mergeShortAdjacentAsrRows(dedupeAdjacentAsrRows(parsedRows));
       if (!parsed.length) {
-        throw new Error("转写服务已响应，但没有返回可用文本。请检查音频内容或更换转写模型。");
+        throw new Error("转写服务已响应，但没有返回可用文本。工作台没有写入空结果；请检查媒体是否有清晰语音，或在模型配置中改用更适合该素材的转写服务。");
       }
       const dedupeCount = Math.max(0, parsedRows.length - parsed.length);
       let finalRows = parsed;
@@ -2635,17 +2675,18 @@ ${rawText}`;
       const qualityText = qualityIssue ? ` ${qualityIssue}` : " 请继续校对时间轴、专有名词和低置信片段。";
       const successMessage = hasTiming ? `${conversionText}${chunkText}${dedupeText}云端转写完成，已生成 ${reviewRows.length} 条可编辑段落。${correctionText}${qualityText}` : `${conversionText}${chunkText}${dedupeText}云端转写完成，已生成 ${reviewRows.length} 条可编辑段落；当前模型未返回词级时间戳，时间轴已按文本自动分段，请校对。${correctionText}${qualityText}`;
       setMessage(successMessage);
-      setTranscriptionStatus({ state: "success", message: successMessage, stage: "生成校对结果" });
+      setWorkbenchTranscriptionStatus({ state: "success", message: successMessage, stage: "生成校对结果" });
+      setWorkspaceState((current) => ({ ...current, lastTranscriptionStatus: null }));
     } catch (error) {
       const errorMessage = formatAsrFailureMessage(error);
       setMessage(errorMessage);
-      setTranscriptionStatus({
+      setWorkbenchTranscriptionStatus({
         state: error?.name === "AbortError" ? "cancelled" : "error",
         message: errorMessage,
         stage: error?.stage || (error?.name === "AbortError" ? "取消转写" : "调用转写服务"),
         code: error?.code || "",
         retryable: error?.retryable ?? true,
-      });
+      }, { persist: true });
     } finally {
       if (asrAbortRef.current === abortController) asrAbortRef.current = null;
       setBusy("");
@@ -4512,8 +4553,9 @@ function AsrConfigPanel({ asrProvider, setAsrProvider, serverStatus, refreshServ
       markAsrTest({ ok: true, message: "转写样本已返回结果。", at: Date.now() });
       setResult(`测试样本已提交，配置尚未保存。${transcript ? `识别片段：${transcript.slice(0, 180)}` : "接口已响应，但没有返回可读文本；请换一段清晰语音样本或检查模型。"}`);
     } catch (error) {
-      markAsrTest({ ok: false, message: error.message || "转写服务测试失败。", at: Date.now() });
-      setResult(error.message || "转写服务测试失败。");
+      const failureMessage = formatAsrConfigTestFailure(error);
+      markAsrTest({ ok: false, message: failureMessage, at: Date.now() });
+      setResult(failureMessage);
     } finally {
       setBusy("");
     }
@@ -5817,14 +5859,14 @@ export function App() {
     setWorkspaceFeatureId(feature.id);
     setActiveTool(feature.id);
     setActiveNav("workbench");
-    setActiveProjectId(projectId);
-    setActiveProjectName(recent.name || fallbackItem?.name || "未命名项目");
     setRows(Array.isArray(workspaceProject.rows) ? normalizeReviewRows(workspaceProject.rows) : []);
     setMedia(restoredMedia);
     setWorkspaceState({ ...defaultWorkspaceState, ...(workspaceProject.workspaceState || {}) });
     savedMediaSignatureRef.current = mediaSignature(restoredMedia);
     savedWorkspaceMediaSignatureRef.current = primaryMediaSignature(restoredMedia);
     savedWorkspaceAudioSignatureRef.current = audioTrackSignature(restoredMedia?.asrAudio);
+    setActiveProjectName(recent.name || fallbackItem?.name || "未命名项目");
+    setActiveProjectId(projectId);
     setWorkspaceSaveStatus({ state: "saved", message: "已保存" });
     setRecents((current) => mergeRecentProjects([recent], current));
     setWorkspaceStatus((current) => current.configured

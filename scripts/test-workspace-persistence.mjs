@@ -131,7 +131,20 @@ try {
     tool: "video-subtitles",
     recent: { id, name: "persistence-test.mp4", meta: "视频智能字幕 · 2 条", status: "已导入", time: "06/19 02:00", type: "video", tool: "video-subtitles" },
     rows,
-    workspaceState: { sourceLanguage: "中文", targetLanguage: "英文", exportMode: "bilingual", exportFormat: "srt", draft: "", transcriptionContext: "产品路线图、Echo Workbench" },
+    workspaceState: {
+      sourceLanguage: "中文",
+      targetLanguage: "英文",
+      exportMode: "bilingual",
+      exportFormat: "srt",
+      draft: "",
+      transcriptionContext: "产品路线图、Echo Workbench",
+      lastTranscriptionStatus: {
+        state: "error",
+        message: "转写未完成：调用转写服务失败：测试失败。已保留当前媒体和已有校对内容。",
+        stage: "调用转写服务",
+        retryable: true,
+      },
+    },
     media: { name: "persistence-test.mp4", type: "video/mp4", size: 12, duration: 4 },
     asrAudio: { name: "persistence-audio.wav", type: "audio/wav", size: 8, duration: 4 },
   };
@@ -158,6 +171,7 @@ try {
   assert.equal(data.project.workspaceState.exportMode, "bilingual");
   assert.equal(data.project.workspaceState.exportFormat, "srt");
   assert.equal(data.project.workspaceState.transcriptionContext, "产品路线图、Echo Workbench");
+  assert.deepEqual(data.project.workspaceState.lastTranscriptionStatus, initialProject.workspaceState.lastTranscriptionStatus);
   assert.ok(data.project.mediaUrl);
   assert.ok(data.project.asrAudioUrl);
 

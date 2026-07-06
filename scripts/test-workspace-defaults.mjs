@@ -6,6 +6,7 @@ assert.equal(defaultWorkspaceState.transcriptionContext, "");
 assert.equal(defaultWorkspaceState.sourceLanguage, "中文");
 assert.equal(defaultWorkspaceState.targetLanguage, "英文");
 assert.equal(defaultWorkspaceState.exportFormat, "");
+assert.equal(defaultWorkspaceState.lastTranscriptionStatus, null);
 assert.equal(workspaceDefaultsForFeature("video-subtitles").sourceLanguage, "中文");
 assert.equal(workspaceDefaultsForFeature("video-subtitles").targetLanguage, "英文");
 assert.equal(workspaceDefaultsForFeature("video-transcribe").sourceLanguage, "中文");

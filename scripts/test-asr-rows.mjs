@@ -8,7 +8,7 @@ assert.deepEqual(
 
 assert.deepEqual(
   splitTranscriptIntoSentences("第一部分内容很长，需要按逗号切开，第二部分继续说明细节，第三部分收尾。"),
-  ["第一部分内容很长，需要按逗号切开，", "第二部分继续说明细节，第三部分收尾。"],
+  ["第一部分内容很长，", "需要按逗号切开，", "第二部分继续说明细节，", "第三部分收尾。"],
 );
 
 assert.deepEqual(
@@ -18,7 +18,7 @@ assert.deepEqual(
 
 assert.deepEqual(
   splitTranscriptIntoSentences("this is a long english transcription result without punctuation and it should be split into readable subtitle rows for proofreading"),
-  ["this is a long english transcription result without punctuation and it should", "be split into readable subtitle rows for proofreading"],
+  ["this is a long english transcription result without punctuation and", "it should be split into readable subtitle rows for proofreading"],
 );
 
 assert.equal(joinAsrTokens([
@@ -79,7 +79,7 @@ const longSegmentRows = rowsFromAsrResult({
 });
 
 assert.ok(longSegmentRows.length > 1);
-assert.ok(longSegmentRows.every((row) => transcriptWeight(row.text) <= 24));
+assert.ok(longSegmentRows.every((row) => transcriptWeight(row.text) <= 20));
 for (let index = 1; index < longSegmentRows.length; index += 1) {
   assert.ok(longSegmentRows[index].start >= longSegmentRows[index - 1].end);
 }
@@ -94,6 +94,13 @@ assert.deepEqual(textRows.map((row) => row.text), ["第一句没有时间戳。"
 
 const realStyleRows = rowsFromAsrResult({ text: "大家好,欢迎使用回响工作台,今天测试音频转写功能。" }, 8);
 assert.deepEqual(realStyleRows.map((row) => row.text), ["大家好，欢迎使用回响工作台，", "今天测试音频转写功能。"]);
+
+assert.ok(
+  rowsFromAsrResult({
+    text: "我以为我们只能给 Kade 最糟糕的最糟糕的，就像这个人 Kade 可以有他在这里继续补充后面的长句。",
+  }, 12).every((row) => transcriptWeight(row.text) <= 20),
+  "ASR plain-text fallback should split long subtitle rows into readable units",
+);
 
 assert.deepEqual(rowsFromAsrResult({}, 10), []);
 

@@ -28,7 +28,7 @@ assert.doesNotMatch(inferenceMessage, /Internal error/);
 
 const languageMessage = sanitizeNvidiaAsrError("StatusCode.INVALID_ARGUMENT Unavailable model requested given these parameters: language_code=zh; sample_rate=16000; type=offline");
 assert.match(languageMessage, /拒绝了识别语言或音频参数/);
-assert.match(languageMessage, /自动尝试服务默认语言/);
+assert.match(languageMessage, /端点与当前测试样本或素材不兼容/);
 assert.doesNotMatch(languageMessage, /工作台|源语言/);
 assert.doesNotMatch(languageMessage, /INVALID_ARGUMENT|language_code=zh/);
 
