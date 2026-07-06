@@ -460,22 +460,38 @@ function readRequestBuffer(req, maxBytes = 220 * 1024 * 1024) {
   });
 }
 
-function generateSpeechSample({ outputPath, text }) {
+function runLocalCommand(command, args, fallbackMessage) {
   return new Promise((resolve, reject) => {
-    const child = spawn("say", ["-o", outputPath, text], { stdio: ["ignore", "ignore", "pipe"] });
+    const child = spawn(command, args, { stdio: ["ignore", "ignore", "pipe"] });
     let stderr = "";
     child.stderr.on("data", (chunk) => {
       stderr += chunk.toString();
     });
-    child.on("error", (error) => reject(new Error(`无法生成测试语音样本：${error.message}`)));
+    child.on("error", (error) => reject(new Error(`${fallbackMessage}：${error.message}`)));
     child.on("close", (code) => {
       if (code !== 0) {
-        reject(new Error(stderr.trim() || "当前系统无法生成测试语音样本，请手动选择一段清晰音频。"));
+        reject(new Error(stderr.trim() || fallbackMessage));
         return;
       }
-      resolve(outputPath);
+      resolve();
     });
   });
+}
+
+async function generateSpeechSample({ outputPath, text, format = "m4a", tempDir = "" }) {
+  if (format === "wav") {
+    const aiffPath = join(tempDir || tmpdir(), "echo-workbench-test.aiff");
+    await runLocalCommand("say", ["-o", aiffPath, text], "无法生成测试语音样本，请手动选择一段清晰音频");
+    await runLocalCommand(
+      "afconvert",
+      ["-f", "WAVE", "-d", "LEI16@16000", "-c", "1", aiffPath, outputPath],
+      "无法生成 Riva 兼容 WAV 测试样本，请手动选择 16kHz 单声道 WAV、FLAC 或 OPUS 音频",
+    );
+    return outputPath;
+  }
+
+  await runLocalCommand("say", ["-o", outputPath, text], "无法生成测试语音样本，请手动选择一段清晰音频");
+  return outputPath;
 }
 
 async function readFormData(req) {
@@ -579,7 +595,7 @@ export function sanitizeNvidiaAsrError(error) {
     return "云端转写端点不可用。请在模型配置中切换预设，或核对 HTTP Endpoint / Riva Function ID。";
   }
   if (/unavailable model requested|language_code|unsupported language|invalid_argument/.test(lower)) {
-    return "当前转写模型不支持所选语言或音频参数。请在工作台选择匹配的源语言，或切换到明确支持该语言的转写端点。";
+    return "当前转写模型不支持所选识别语言或音频参数。请把识别语言改为“自动识别”或与样本语言一致，或切换到明确支持该语言的转写端点。";
   }
   if (/deadline|timeout|timed out|unavailable|temporarily unavailable/.test(lower)) {
     return "云端转写请求超时或上游暂不可用。请稍后重试；长音频可先切换更稳定的模型或缩短文件后再试。";
@@ -1215,16 +1231,23 @@ function registerLocalApi(middlewares, mode) {
         }
         let tempDir = "";
         try {
+          const url = new URL(req.url || "/", "http://localhost");
+          const format = url.searchParams.get("format") === "wav" ? "wav" : "m4a";
           tempDir = await mkdtemp(join(tmpdir(), "echo-asr-test-sample-"));
-          const samplePath = join(tempDir, "echo-workbench-test.m4a");
+          const sampleName = format === "wav" ? "echo-workbench-test.wav" : "echo-workbench-test.m4a";
+          const samplePath = join(tempDir, sampleName);
           await generateSpeechSample({
             outputPath: samplePath,
-            text: "Echo workbench transcription test. 回响工作台转写测试。视频智能字幕，音频转写。",
+            text: format === "wav"
+              ? "Echo workbench transcription test. This is a clear speech sample."
+              : "Echo workbench transcription test. 回响工作台转写测试。视频智能字幕，音频转写。",
+            format,
+            tempDir,
           });
           const sample = await readFile(samplePath);
           res.statusCode = 200;
-          res.setHeader("Content-Type", "audio/mp4");
-          res.setHeader("Content-Disposition", 'attachment; filename="echo-workbench-test.m4a"');
+          res.setHeader("Content-Type", format === "wav" ? "audio/wav" : "audio/mp4");
+          res.setHeader("Content-Disposition", `attachment; filename="${sampleName}"`);
           res.end(sample);
         } catch (error) {
           sendJson(res, 400, { error: error.message || "生成测试样本失败。" });

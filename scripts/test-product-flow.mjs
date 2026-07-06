@@ -1166,7 +1166,7 @@ try {
   await page.waitForTimeout(200);
   await page.getByRole("navigation").getByRole("button", { name: "模型配置" }).click();
   await page.locator("label").filter({ hasText: "ASR API Key" }).locator("input").fill("");
-  await page.getByRole("button", { name: "保存转写服务" }).click();
+  await page.getByRole("button", { name: "保存配置" }).click();
   await page.getByRole("navigation").getByRole("button", { name: "首页" }).click();
   await page.getByText("视频转写", { exact: true }).click();
   await page.waitForFunction(() => location.hash === "#workbench/video-transcribe");
@@ -1180,7 +1180,7 @@ try {
   assert.equal(await page.getByRole("button", { name: "转写服务", exact: true }).evaluate((node) => node.classList.contains("active")), true, "ASR blocker should open the transcription-service config panel");
   assert.equal(await page.locator("label").filter({ hasText: "ASR API Key" }).locator("input").isVisible(), true, "ASR blocker should land on the ASR key field, not the text-model panel");
   await page.locator("label").filter({ hasText: "ASR API Key" }).locator("input").fill("product-flow-test-key");
-  await page.getByRole("button", { name: "保存转写服务" }).click();
+  await page.getByRole("button", { name: "保存配置" }).click();
   await page.getByRole("navigation").getByRole("button", { name: "首页" }).click();
   await page.waitForFunction(() => location.hash === "#home");
   await page.goto(`${baseUrl}/#workbench/video-transcribe`, { waitUntil: "networkidle" });
@@ -2401,11 +2401,12 @@ try {
   assert.equal(modelConfigLayout.advancedCollapsed, true, "ASR model, transport, endpoint, and sample controls should be collapsed as advanced settings by default");
   assert.equal(modelConfigLayout.hidesAdvancedAsrFieldsByDefault, true, "advanced ASR fields should not compete with provider, language, and key in the first viewport");
   assert.equal(modelConfigLayout.actionButtons.every((button) => button.visible), true, "all model config action buttons should be visible without scrolling");
-  const asrTestButton = page.getByRole("button", { name: "保存并测试" });
+  const asrTestButton = page.getByRole("button", { name: "测试连接" });
   assert.equal(await asrTestButton.count(), 1);
   assert.equal(await asrTestButton.isDisabled(), false, "ASR test should use the built-in sample by default instead of requiring users to choose one first");
+  assert.doesNotMatch(await page.locator(".config-actions").innerText(), /保存并测试/, "ASR save and test actions should stay separate");
   assert.doesNotMatch(await page.locator(".config-actions").innerText(), /测试样本/, "default ASR test should not ask users to understand sample setup first");
-  await page.route("**/api/asr/test-sample", async (route) => {
+  await page.route("**/api/asr/test-sample*", async (route) => {
     await route.fulfill({
       status: 200,
       contentType: "audio/wav",
@@ -2456,6 +2457,9 @@ try {
     videoInputMode: "extract",
     apiKey: "",
   });
+  const advancedProviderRecommendation = await page.locator(".asr-recommendation").innerText();
+  assert.match(advancedProviderRecommendation, /实际拥有 Key 的服务/, "advanced ASR providers should tell users to choose a provider they can actually authorize");
+  assert.doesNotMatch(advancedProviderRecommendation, /默认百炼 ASR/, "ASR recovery copy should not recommend a provider the user may not have a key for");
   await page.getByLabel("转写服务提供方").selectOption({ label: "自定义 HTTP 转写端点" });
   await page.evaluate(() => {
     const endpointInput = [...document.querySelectorAll("label")].find((label) => /HTTP Endpoint/.test(label.innerText))?.querySelector("input");
@@ -2466,7 +2470,7 @@ try {
     modelInput.dispatchEvent(new Event("input", { bubbles: true }));
   });
   assert.match(await page.locator(".config-state").first().innerText(), /模型/);
-  assert.equal(await page.getByRole("button", { name: "保存并测试" }).isDisabled(), true);
+  assert.equal(await page.getByRole("button", { name: "测试连接" }).isDisabled(), true);
   await page.setViewportSize({ width: 390, height: 844 });
   await page.waitForTimeout(300);
   const mobileAsrKeyVisible = await page.evaluate(() => {

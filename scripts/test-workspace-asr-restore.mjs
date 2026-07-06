@@ -114,7 +114,7 @@ try {
   await page.goto(`${baseUrl}/#models/asr`, { waitUntil: "networkidle" });
   await page.reload({ waitUntil: "networkidle" });
   await page.waitForFunction(() => document.querySelector(".config-panel")?.textContent?.includes("转写服务"));
-  await page.route("**/api/asr/test-sample", async (route) => {
+  await page.route("**/api/asr/test-sample*", async (route) => {
     await route.fulfill({
       status: 200,
       contentType: "audio/mp4",
@@ -128,7 +128,7 @@ try {
       body: JSON.stringify({ text: "回响工作台测试样本。", segments: [{ start: 0, end: 1, text: "回响工作台测试样本。" }] }),
     });
   });
-  const testButton = page.getByRole("button", { name: "保存并测试" });
+  const testButton = page.getByRole("button", { name: "测试连接" });
   assert.equal(await testButton.isEnabled(), true, "built-in sample should make real ASR test action immediately available");
   await testButton.click();
   await page.waitForFunction(() => document.querySelector(".config-panel")?.textContent?.includes("测试样本已提交"));

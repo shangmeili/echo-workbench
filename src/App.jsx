@@ -4212,6 +4212,14 @@ function AsrConfigPanel({ asrProvider, setAsrProvider, serverStatus, refreshServ
         : `${credentialLabel} 已可用于 HTTP 转写端点。`
     : missingTargetText);
   const badgeText = !ready ? "待配置" : !rivaReady ? "依赖缺失" : failed ? "测试失败" : tested ? "已验证" : "已配置";
+  const showAsrRecommendation = failed || !usesDashScopeFunAsr || Boolean(keyMismatchWarning);
+  const asrRecommendationText = usesRivaGrpc
+    ? "当前使用 NVIDIA Riva gRPC。NVIDIA 有可用的 Whisper Large v3 端点，测试会自动使用 Riva 兼容 WAV 样本；如果仍失败，优先检查 NVIDIA Build Key 权限、Riva SDK 和音频参数。"
+    : !usesDashScopeFunAsr
+      ? "当前提供方需要确认端点、模型、Key 和音频格式。请选择你实际拥有 Key 的服务，不需要切换到没有 Key 的提供方。"
+      : failed
+        ? "当前配置测试失败。请先检查 Key、模型、语言和端点是否匹配，再用内置样本复测。"
+        : "";
 
   useEffect(() => setDraft(asrProvider), [asrProvider]);
 
@@ -4231,11 +4239,20 @@ function AsrConfigPanel({ asrProvider, setAsrProvider, serverStatus, refreshServ
     return next;
   };
 
+  const saveAsrConfig = () => {
+    persist({}, { showResult: true });
+  };
+
+  const markAsrTest = (lastTest) => {
+    setDraft((current) => ({ ...current, lastTest }));
+  };
+
   const handleProviderChange = (label) => {
     const preset = findAsrProviderPreset(label);
     const keepApiKey = asrCredentialScope(preset) === asrCredentialScope(draft);
     const next = { ...defaultAsrProvider, ...preset, apiKey: keepApiKey ? draft.apiKey : "" };
     setDraft(next);
+    setTestSample(null);
     setResult("");
   };
 
@@ -4262,17 +4279,23 @@ function AsrConfigPanel({ asrProvider, setAsrProvider, serverStatus, refreshServ
       }
       return next;
     });
+    setTestSample(null);
     setResult("");
   };
 
   const loadBuiltInTestSample = async () => {
-    const response = await fetch("/api/asr/test-sample");
+    const sampleFormat = usesRivaGrpc ? "wav" : "m4a";
+    const response = await fetch(`/api/asr/test-sample?format=${sampleFormat}`);
     if (!response.ok) {
       const data = await response.json().catch(() => ({}));
       throw new Error(data.error || "生成测试样本失败。");
     }
     const blob = await response.blob();
-    return new File([blob], "echo-workbench-test.m4a", { type: blob.type || "audio/mp4", lastModified: Date.now() });
+    return new File(
+      [blob],
+      sampleFormat === "wav" ? "echo-workbench-test.wav" : "echo-workbench-test.m4a",
+      { type: blob.type || (sampleFormat === "wav" ? "audio/wav" : "audio/mp4"), lastModified: Date.now() },
+    );
   };
 
   const useBuiltInTestSample = async () => {
@@ -4281,7 +4304,7 @@ function AsrConfigPanel({ asrProvider, setAsrProvider, serverStatus, refreshServ
     try {
       const sample = await loadBuiltInTestSample();
       setTestSample(sample);
-      setResult("已载入内置测试样本。点击“保存并测试”会调用真实转写服务验证。");
+      setResult("已载入内置测试样本。点击“测试连接”会调用真实转写服务验证。");
     } catch (error) {
       setResult(error.message || "生成测试样本失败。请手动选择一段清晰语音音频。");
     } finally {
@@ -4303,10 +4326,10 @@ function AsrConfigPanel({ asrProvider, setAsrProvider, serverStatus, refreshServ
       if (!testSample) setTestSample(testFile);
       const data = await callAsr(draft, testFile, draft.languageCode || "multi");
       const transcript = String(data?.text || data?.transcript || data?.segments?.map?.((item) => item.text).filter(Boolean).join(" ") || "").trim();
-      persist({ lastTest: { ok: true, message: "转写样本已返回结果。", at: Date.now() } });
-      setResult(`测试样本已提交。${transcript ? `识别片段：${transcript.slice(0, 180)}` : "接口已响应，但没有返回可读文本；请换一段清晰语音样本或检查模型。"}`);
+      markAsrTest({ ok: true, message: "转写样本已返回结果。", at: Date.now() });
+      setResult(`测试样本已提交，配置尚未保存。${transcript ? `识别片段：${transcript.slice(0, 180)}` : "接口已响应，但没有返回可读文本；请换一段清晰语音样本或检查模型。"}`);
     } catch (error) {
-      persist({ lastTest: { ok: false, message: error.message || "转写服务测试失败。", at: Date.now() } });
+      markAsrTest({ ok: false, message: error.message || "转写服务测试失败。", at: Date.now() });
       setResult(error.message || "转写服务测试失败。");
     } finally {
       setBusy("");
@@ -4349,6 +4372,14 @@ function AsrConfigPanel({ asrProvider, setAsrProvider, serverStatus, refreshServ
       <div className={`config-state ${ready && !dependencyWarning && !keyMismatchWarning ? "ok" : "warn"}`}>
         {configStateText}
       </div>
+      {showAsrRecommendation && (
+        <div className="asr-recommendation">
+          <div>
+            <strong>建议配置</strong>
+            <span>{asrRecommendationText}</span>
+          </div>
+        </div>
+      )}
       <details className="advanced-config">
         <summary>
           <span><SlidersHorizontal size={17} />高级设置</span>
@@ -4392,8 +4423,8 @@ function AsrConfigPanel({ asrProvider, setAsrProvider, serverStatus, refreshServ
             {!usesDashScopeFunAsr && (
               <span className="field-note">
                 {draft.transport === "nvidia-http"
-                  ? "HTTP 端点可使用 OpenAI-compatible audio transcription 服务，或自部署/远程 NVIDIA NIM 的 /v1/audio/transcriptions。NVIDIA Build 的 ASR 模型多为下载或自部署，不会自动提供免费托管端点。"
-                  : "仅在你已有可用 Riva gRPC 地址和 Function ID 时使用。NVIDIA Build 页面中的多数 ASR 模型是下载或自部署形态，不等同于稳定免费托管转写端点。"}
+                  ? "HTTP 端点可使用 OpenAI-compatible audio transcription 服务，或自部署/远程 NVIDIA NIM 的 /v1/audio/transcriptions。"
+                  : "NVIDIA Build 的 Whisper Large v3 可走 Riva gRPC；需要有效的 NVIDIA Build Key、Function ID、Riva SDK，以及兼容的 WAV/FLAC/OPUS 音频输入。"}
               </span>
             )}
           </label>
@@ -4426,7 +4457,7 @@ function AsrConfigPanel({ asrProvider, setAsrProvider, serverStatus, refreshServ
       </details>
       <div className="config-actions">
         {asrTestBlockedText && <p className="config-action-hint">{asrTestBlockedText}</p>}
-        <button className="secondary" onClick={() => persist({}, { showResult: true })}>保存转写服务</button>
+        <button className="secondary" onClick={saveAsrConfig}>保存配置</button>
         {usesRivaGrpc && (
           <button className="secondary" onClick={refreshServerStatus} disabled={serverStatus.checking}>
             {serverStatus.checking ? <Loader2 className="spin" size={18} /> : <RefreshCw size={18} />}
@@ -4435,7 +4466,7 @@ function AsrConfigPanel({ asrProvider, setAsrProvider, serverStatus, refreshServ
         )}
         <button className="primary" onClick={testAsrConnection} disabled={!canTest || busy === "test"} title={canTest ? "使用内置样本验证真实转写结果" : configStateText}>
           {busy === "test" ? <Loader2 className="spin" size={18} /> : <Check size={18} />}
-          保存并测试
+          测试连接
         </button>
       </div>
       {usesRivaGrpc && !rivaReady && (
