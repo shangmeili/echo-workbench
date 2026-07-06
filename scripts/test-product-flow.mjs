@@ -1980,12 +1980,19 @@ try {
   let asrRequestCount = 0;
   let asrMode = "normal";
   let releaseHeldAsr = null;
-  await page.route("**/api/asr/transcribe", async (route) => {
+  await page.route("**/api/asr/transcribe*", async (route) => {
     asrRequestCount += 1;
     if (asrMode === "hold") {
       await new Promise((resolve) => {
         releaseHeldAsr = resolve;
       });
+    }
+    if (asrMode === "clientTimeout") {
+      await new Promise((resolve) => {
+        releaseHeldAsr = resolve;
+      });
+      await route.abort("timedout").catch(() => {});
+      return;
     }
     if (asrMode === "fail") {
       await route.fulfill({
@@ -2151,6 +2158,21 @@ try {
   await page.waitForFunction(() => document.querySelector(".transcription-status-card.error")?.textContent?.includes("转写服务连接中断"));
   assert.equal(await page.locator(".subtitle-table").count(), 0, "network failed transcription should not create proofreading rows");
   assert.equal(await page.getByRole("button", { name: /开始转写/ }).first().isEnabled(), true, "network failed transcription should keep a retryable button with the error visible");
+  asrMode = "clientTimeout";
+  releaseHeldAsr = null;
+  await page.evaluate(() => {
+    window.__ECHO_ASR_CLIENT_TIMEOUT_MS__ = 40;
+  });
+  await assert.doesNotReject(() => page.getByRole("button", { name: /开始转写/ }).first().click());
+  await page.waitForFunction(() => document.querySelector(".transcription-status-card.error")?.textContent?.includes("转写服务响应超时"));
+  assert.match(await page.locator(".transcription-status-card.error").innerText(), /阶段：等待转写服务响应/);
+  assert.equal(await page.locator(".subtitle-table").count(), 0, "hung transcription should not create proofreading rows");
+  assert.equal(await page.getByRole("button", { name: /开始转写/ }).first().isEnabled(), true, "hung transcription should return to a retryable state with a visible timeout error");
+  releaseHeldAsr?.();
+  releaseHeldAsr = null;
+  await page.evaluate(() => {
+    delete window.__ECHO_ASR_CLIENT_TIMEOUT_MS__;
+  });
   asrMode = "hold";
   await assert.doesNotReject(() => page.getByRole("button", { name: /开始转写/ }).first().click());
   await page.getByRole("button", { name: /取消转写/ }).waitFor({ state: "visible" });
@@ -2197,7 +2219,7 @@ try {
   asrMode = "normal";
   await assert.doesNotReject(() => page.getByRole("button", { name: /开始转写/ }).first().click());
   await page.waitForTimeout(1200);
-  assert.equal(asrRequestCount, 6);
+  assert.equal(asrRequestCount, 7);
   assert.equal(await page.locator(".subtitle-table .table-row").count() - 1, 2);
   assert.match(await readCorrectionTableValues(page), /音频转写第一句/);
   assert.deepEqual(await readCorrectionTableMode(page), { sourceOnly: true, withTranslation: false, translationEditors: 0 });
@@ -2233,7 +2255,7 @@ try {
   const startButton = page.getByRole("button", { name: /开始转写/ }).first();
   await assert.doesNotReject(() => startButton.click());
   await page.waitForTimeout(1200);
-  assert.equal(asrRequestCount, 7);
+  assert.equal(asrRequestCount, 8);
   assert.equal(await page.locator(".subtitle-table .table-row").count() - 1, 2);
   assert.match(await readCorrectionTableValues(page), /音频转写第一句/);
   assert.deepEqual(await readCorrectionTableMode(page), { sourceOnly: true, withTranslation: false, translationEditors: 0 });

@@ -58,6 +58,7 @@ const STORAGE_KEYS = {
 
 const REVIEW_PAGE_SIZE = 30;
 const MINIMAX_PROVIDER_LABEL = "MiniMax 中国区";
+const DEFAULT_ASR_CLIENT_TIMEOUT_MS = 180_000;
 
 const defaultProvider = {
   label: MINIMAX_PROVIDER_LABEL,
@@ -1003,29 +1004,76 @@ async function readApiResponse(response, fallbackMessage) {
   return data;
 }
 
+function getAsrClientTimeoutMs() {
+  const configured = Number(globalThis.__ECHO_ASR_CLIENT_TIMEOUT_MS__);
+  return Number.isFinite(configured) && configured > 0 ? configured : DEFAULT_ASR_CLIENT_TIMEOUT_MS;
+}
+
+function createAsrRequestSignal(parentSignal) {
+  const controller = new AbortController();
+  const timeoutMessage = "转写服务响应超时。系统已停止等待本次请求并保留当前任务。";
+  let timedOut = false;
+  const abortFromParent = () => {
+    controller.abort(parentSignal?.reason || new DOMException("Aborted", "AbortError"));
+  };
+  const timer = globalThis.setTimeout(() => {
+    timedOut = true;
+    controller.abort(new Error(timeoutMessage));
+  }, getAsrClientTimeoutMs());
+  if (parentSignal?.aborted) {
+    abortFromParent();
+  } else {
+    parentSignal?.addEventListener("abort", abortFromParent, { once: true });
+  }
+  return {
+    signal: controller.signal,
+    timeoutMessage,
+    isTimeout: () => timedOut,
+    cleanup: () => {
+      globalThis.clearTimeout(timer);
+      parentSignal?.removeEventListener("abort", abortFromParent);
+    },
+  };
+}
+
+async function fetchAsrEndpoint(url, init, options = {}) {
+  const requestSignal = createAsrRequestSignal(options.signal);
+  try {
+    return await fetch(url, { ...init, signal: requestSignal.signal });
+  } catch (error) {
+    if (requestSignal.isTimeout()) {
+      const timeoutError = new Error(requestSignal.timeoutMessage);
+      timeoutError.stage = "等待转写服务响应";
+      timeoutError.retryable = true;
+      throw timeoutError;
+    }
+    throw error;
+  } finally {
+    requestSignal.cleanup();
+  }
+}
+
 async function callAsr(asrProvider, file, languageCode, options = {}) {
   const form = new FormData();
   form.set("file", file);
   form.set("provider", JSON.stringify({ ...asrProvider, languageCode }));
-  const response = await fetch("/api/asr/transcribe", {
+  const response = await fetchAsrEndpoint("/api/asr/transcribe", {
     method: "POST",
     body: form,
-    signal: options.signal,
-  });
+  }, options);
   return readApiResponse(response, "云端转写失败");
 }
 
 async function callWorkspaceAsr(asrProvider, workspaceSource, languageCode, options = {}) {
-  const response = await fetch("/api/asr/transcribe-workspace", {
+  const response = await fetchAsrEndpoint("/api/asr/transcribe-workspace", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    signal: options.signal,
     body: JSON.stringify({
       provider: { ...asrProvider, languageCode },
       projectId: workspaceSource.projectId || workspaceSource.workspaceProjectId,
       field: workspaceSource.field || workspaceSource.workspaceField,
     }),
-  });
+  }, options);
   return readApiResponse(response, "云端转写失败");
 }
 
@@ -3727,7 +3775,7 @@ ${JSON.stringify(chunk.map((row) => ({ id: row.id, start: row.start, end: row.en
                 )}
               </div>
             )}
-            {!isSubtitleFileFlow && !rows.length && transcriptionStatus.state !== "idle" && (
+            {!isSubtitleFileFlow && transcriptionStatus.state !== "idle" && (!rows.length || transcriptionStatus.state !== "success") && (
               <div className={`transcription-status-card ${transcriptionStatus.state}`} role={transcriptionStatus.state === "error" ? "alert" : "status"} aria-live="polite">
                 <div>
                   <strong>

@@ -3128,6 +3128,11 @@ h1 {
   justify-content: center;
 }
 
+.workbench-layout.has-results .transcription-status-card {
+  width: 100%;
+  margin: 0;
+}
+
 .export-mode-control {
   width: calc(100% - 28px);
   margin: 8px 14px 0;
