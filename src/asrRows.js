@@ -14,22 +14,20 @@ export function splitTranscriptIntoSentences(text) {
   if (/\s/.test(clean) && /[A-Za-z]/.test(clean)) {
     const words = clean.split(/\s+/).filter(Boolean);
     const result = [];
-    for (let index = 0; index < words.length; index += 18) {
-      result.push(words.slice(index, index + 18).join(" "));
+    const maxWords = maxMergedUnits(clean);
+    for (let index = 0; index < words.length; index += maxWords) {
+      result.push(words.slice(index, index + maxWords).join(" "));
     }
     return result.filter(Boolean);
   }
-  const result = [];
-  for (let index = 0; index < clean.length; index += 28) {
-    result.push(clean.slice(index, index + 28).trim());
-  }
-  return result.filter(Boolean);
+  const maxChars = maxMergedUnits(clean);
+  return splitCjkTextByReadableLength(clean, maxChars);
 }
 
 function splitLongSentenceChunk(text) {
   const clean = String(text || "").trim();
   if (!clean) return [];
-  const maxUnits = /\s/.test(clean) && /[A-Za-z]/.test(clean) ? 18 : 24;
+  const maxUnits = maxMergedUnits(clean);
   if (transcriptWeight(clean) <= maxUnits) return [clean];
   const pieces = clean
     .split(/(?<=[，,、：:])\s*/)
@@ -50,9 +48,7 @@ function splitLongSentenceChunk(text) {
       }
       return;
     }
-    for (let index = 0; index < value.length; index += maxUnits) {
-      result.push(value.slice(index, index + maxUnits).trim());
-    }
+    result.push(...splitCjkTextByReadableLength(value, maxUnits));
   };
 
   for (const piece of pieces.length ? pieces : [clean]) {
@@ -70,6 +66,33 @@ function splitLongSentenceChunk(text) {
   }
   flushCurrent();
   return result.length ? result : [clean];
+}
+
+function splitCjkTextByReadableLength(value, maxUnits) {
+  const clean = String(value || "").trim();
+  if (!clean) return [];
+  const result = [];
+  const softBreakPatterns = ["需要", "应该", "可以", "然后", "所以", "但是", "因为", "如果", "同时", "并且", "以及", "为了"];
+  let remaining = clean;
+  while (transcriptWeight(remaining) > maxUnits) {
+    const minimum = Math.max(8, Math.floor(maxUnits * 0.62));
+    let splitIndex = -1;
+    for (const pattern of softBreakPatterns) {
+      const index = remaining.lastIndexOf(pattern, maxUnits);
+      if (index >= minimum) {
+        splitIndex = index;
+        break;
+      }
+    }
+    if (splitIndex < minimum) {
+      splitIndex = maxUnits;
+    }
+    const part = remaining.slice(0, splitIndex).trim();
+    if (part) result.push(part);
+    remaining = remaining.slice(splitIndex).trim();
+  }
+  if (remaining) result.push(remaining);
+  return result;
 }
 
 export function transcriptWeight(text) {
@@ -159,7 +182,7 @@ export function groupWordsToRows(words) {
     const text = joinAsrTokens(group);
     const duration = wordEnd(group.at(-1)) - wordStart(group[0]);
     const units = transcriptWeight(text);
-    if (/[。！？!?；;]$/.test(wordText(word)) || units >= 26 || duration >= 5.5) flush();
+    if (/[。！？!?；;]$/.test(wordText(word)) || units >= maxMergedUnits(text) || duration >= 4.8) flush();
   });
   flush();
   return rows;
@@ -231,7 +254,7 @@ function isLatinText(text) {
 }
 
 function maxMergedUnits(text) {
-  return isLatinText(text) ? 18 : 24;
+  return isLatinText(text) ? 12 : 18;
 }
 
 function isShortFragment(row) {

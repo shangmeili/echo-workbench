@@ -11,6 +11,16 @@ assert.deepEqual(
   ["第一部分内容很长，需要按逗号切开，", "第二部分继续说明细节，第三部分收尾。"],
 );
 
+assert.deepEqual(
+  splitTranscriptIntoSentences("这是一个没有标点的长中文识别结果需要拆成更容易校对和导出的字幕段落"),
+  ["这是一个没有标点的长中文识别结果", "需要拆成更容易校对和导出的字幕段落"],
+);
+
+assert.deepEqual(
+  splitTranscriptIntoSentences("this is a long english transcription result without punctuation and it should be split into readable subtitle rows for proofreading"),
+  ["this is a long english transcription result without punctuation and it should", "be split into readable subtitle rows for proofreading"],
+);
+
 assert.equal(joinAsrTokens([
   { word: "Hello" },
   { word: "world" },

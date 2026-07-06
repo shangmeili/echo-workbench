@@ -1073,10 +1073,15 @@ try {
   await assertDirectWorkbenchBackReturnsHome(context);
   const browserErrors = [];
   let expectedAsrFailureEvents = 0;
+  let expectedAsrConnectionFailureEvents = 0;
   page.on("console", (message) => {
     if (message.type() !== "error") return;
     if (expectedAsrFailureEvents > 0 && /Failed to load resource: the server responded with a status of 400/.test(message.text())) {
       expectedAsrFailureEvents -= 1;
+      return;
+    }
+    if (expectedAsrConnectionFailureEvents > 0 && /Failed to load resource: net::ERR_CONNECTION_FAILED/.test(message.text())) {
+      expectedAsrConnectionFailureEvents -= 1;
       return;
     }
     browserErrors.push({ type: "console", text: message.text() });
@@ -2000,6 +2005,10 @@ try {
       });
       return;
     }
+    if (asrMode === "networkFail") {
+      await route.abort("connectionfailed");
+      return;
+    }
     await route.fulfill({
       status: 200,
       contentType: "application/json",
@@ -2132,6 +2141,12 @@ try {
   await page.waitForFunction(() => document.querySelector(".transcription-status-card.error")?.textContent?.includes("上游 ASR 返回了纯文本错误"));
   assert.equal(await page.locator(".subtitle-table").count(), 0, "plain-text failed transcription should not create proofreading rows");
   assert.equal(await page.getByRole("button", { name: /开始转写/ }).first().isEnabled(), true, "plain-text failed transcription should keep a retryable button with the error visible");
+  asrMode = "networkFail";
+  expectedAsrConnectionFailureEvents = 2;
+  await assert.doesNotReject(() => page.getByRole("button", { name: /开始转写/ }).first().click());
+  await page.waitForFunction(() => document.querySelector(".transcription-status-card.error")?.textContent?.includes("转写服务连接中断"));
+  assert.equal(await page.locator(".subtitle-table").count(), 0, "network failed transcription should not create proofreading rows");
+  assert.equal(await page.getByRole("button", { name: /开始转写/ }).first().isEnabled(), true, "network failed transcription should keep a retryable button with the error visible");
   asrMode = "hold";
   await assert.doesNotReject(() => page.getByRole("button", { name: /开始转写/ }).first().click());
   await page.getByRole("button", { name: /取消转写/ }).waitFor({ state: "visible" });
@@ -2178,7 +2193,7 @@ try {
   asrMode = "normal";
   await assert.doesNotReject(() => page.getByRole("button", { name: /开始转写/ }).first().click());
   await page.waitForTimeout(1200);
-  assert.equal(asrRequestCount, 4);
+  assert.equal(asrRequestCount, 6);
   assert.equal(await page.locator(".subtitle-table .table-row").count() - 1, 2);
   assert.match(await readCorrectionTableValues(page), /音频转写第一句/);
   assert.deepEqual(await readCorrectionTableMode(page), { sourceOnly: true, withTranslation: false, translationEditors: 0 });
@@ -2214,7 +2229,7 @@ try {
   const startButton = page.getByRole("button", { name: /开始转写/ }).first();
   await assert.doesNotReject(() => startButton.click());
   await page.waitForTimeout(1200);
-  assert.equal(asrRequestCount, 5);
+  assert.equal(asrRequestCount, 7);
   assert.equal(await page.locator(".subtitle-table .table-row").count() - 1, 2);
   assert.match(await readCorrectionTableValues(page), /音频转写第一句/);
   assert.deepEqual(await readCorrectionTableMode(page), { sourceOnly: true, withTranslation: false, translationEditors: 0 });

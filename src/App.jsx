@@ -839,6 +839,35 @@ function fallbackAsrLanguageCodeForRetry(asrProvider = {}) {
   return asrProvider.languageCode || "multi";
 }
 
+function isTransientAsrConnectionError(error) {
+  if (error?.name === "AbortError") return false;
+  const raw = String(error?.message || error || "").trim();
+  return /failed to fetch|networkerror|load failed|network request failed|请求失败|网络|connection/i.test(raw);
+}
+
+function wait(ms, signal) {
+  return new Promise((resolve, reject) => {
+    if (signal?.aborted) {
+      reject(new DOMException("Aborted", "AbortError"));
+      return;
+    }
+    const timer = window.setTimeout(resolve, ms);
+    signal?.addEventListener("abort", () => {
+      window.clearTimeout(timer);
+      reject(new DOMException("Aborted", "AbortError"));
+    }, { once: true });
+  });
+}
+
+function formatAsrFailureMessage(error) {
+  if (error?.name === "AbortError") return "已取消转写。已保留当前媒体和已有校对内容。";
+  const raw = String(error?.message || "").trim();
+  if (isTransientAsrConnectionError(error)) {
+    return "转写未完成：转写服务连接中断，系统已自动重试并保留当前任务。没有生成不完整结果，可以直接再次开始，或在模型配置中切换可用转写服务。";
+  }
+  return `转写未完成：${raw || "云端转写服务未返回可用结果"}。已保留当前媒体和已有校对内容。`;
+}
+
 function getAssistantText(data) {
   const message = data?.choices?.[0]?.message;
   const content = message?.content;
@@ -2468,6 +2497,11 @@ ${rawText}`;
       try {
         return await request(requestedLanguageCode);
       } catch (error) {
+        if (isTransientAsrConnectionError(error)) {
+          setTranscriptionProgress("转写服务连接中断，正在自动重试。");
+          await wait(900, abortController.signal);
+          return request(requestedLanguageCode);
+        }
         const fallbackLanguageCode = fallbackAsrLanguageCodeForRetry(asrProvider);
         if (!isAsrLanguageParameterError(error) || !fallbackLanguageCode || fallbackLanguageCode === requestedLanguageCode) {
           throw error;
@@ -2576,9 +2610,7 @@ ${rawText}`;
       setMessage(successMessage);
       setTranscriptionStatus({ state: "success", message: successMessage });
     } catch (error) {
-      const errorMessage = error?.name === "AbortError"
-        ? "已取消转写。已保留当前媒体和已有校对内容。"
-        : `转写未完成：${error.message || "云端转写服务未返回可用结果"}。已保留当前媒体和已有校对内容。`;
+      const errorMessage = formatAsrFailureMessage(error);
       setMessage(errorMessage);
       setTranscriptionStatus({
         state: error?.name === "AbortError" ? "cancelled" : "error",
