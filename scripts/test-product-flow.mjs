@@ -1786,7 +1786,7 @@ try {
           },
         }],
       }),
-    });
+    }).catch(() => {});
   });
   await page.getByLabel("目标语言").selectOption({ label: "英文" });
   assert.deepEqual(await readCorrectionTableMode(page), { sourceOnly: false, withTranslation: true, translationEditors: 1 });
@@ -2269,6 +2269,24 @@ try {
   assert.match(exportedAudioTranscriptText, /音频转写第一句/);
   assert.match(exportedAudioTranscriptText, /音频转写第二句/);
   assert.doesNotMatch(exportedAudioTranscriptText, /未标注/);
+
+  holdNextDraftRequest = true;
+  releaseHeldDraftRequest = null;
+  await page.evaluate(() => {
+    window.__ECHO_MODEL_CLIENT_TIMEOUT_MS__ = 40;
+  });
+  await openActionDetails(page, ".processing-details");
+  await page.getByRole("button", { name: /转写整理/ }).click();
+  await page.waitForFunction(() => [...document.querySelectorAll(".message, .workbench-toast")].some((node) => /文本模型响应超时/.test(node.textContent || "")));
+  assert.equal(await page.locator(".draft-inline-panel textarea").count(), 0, "timed-out model task should not create draft output");
+  assert.equal(await page.getByRole("button", { name: "取消处理", exact: true }).count(), 0, "model timeout should release the cancellation control");
+  await openActionDetails(page, ".processing-details");
+  assert.equal(await page.getByRole("button", { name: /转写整理/ }).isEnabled(), true, "model timeout should return processing actions to a retryable state with the error visible");
+  releaseHeldDraftRequest?.();
+  releaseHeldDraftRequest = null;
+  await page.evaluate(() => {
+    delete window.__ECHO_MODEL_CLIENT_TIMEOUT_MS__;
+  });
 
   holdNextDraftRequest = true;
   await openActionDetails(page, ".processing-details");

@@ -59,6 +59,7 @@ const STORAGE_KEYS = {
 const REVIEW_PAGE_SIZE = 30;
 const MINIMAX_PROVIDER_LABEL = "MiniMax 中国区";
 const DEFAULT_ASR_CLIENT_TIMEOUT_MS = 180_000;
+const DEFAULT_MODEL_CLIENT_TIMEOUT_MS = 180_000;
 
 const defaultProvider = {
   label: MINIMAX_PROVIDER_LABEL,
@@ -969,23 +970,6 @@ function subtitlePreviewLines(row, mode) {
   return source ? [source] : [];
 }
 
-async function callChat(provider, messages, options = {}) {
-  const response = await fetch("/api/chat", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    signal: options.signal,
-    body: JSON.stringify({
-      provider,
-      messages,
-      temperature: options.temperature ?? 0.2,
-      max_completion_tokens: options.max_completion_tokens ?? 1200,
-    }),
-  });
-  const data = await response.json();
-  if (!response.ok) throw new Error(data.error || "模型请求失败");
-  return getAssistantText(data);
-}
-
 async function readApiResponse(response, fallbackMessage) {
   const text = await response.text();
   let data = {};
@@ -1004,14 +988,13 @@ async function readApiResponse(response, fallbackMessage) {
   return data;
 }
 
-function getAsrClientTimeoutMs() {
-  const configured = Number(globalThis.__ECHO_ASR_CLIENT_TIMEOUT_MS__);
-  return Number.isFinite(configured) && configured > 0 ? configured : DEFAULT_ASR_CLIENT_TIMEOUT_MS;
+function getModelClientTimeoutMs() {
+  const configured = Number(globalThis.__ECHO_MODEL_CLIENT_TIMEOUT_MS__);
+  return Number.isFinite(configured) && configured > 0 ? configured : DEFAULT_MODEL_CLIENT_TIMEOUT_MS;
 }
 
-function createAsrRequestSignal(parentSignal) {
+function createTimedRequestSignal(parentSignal, timeoutMs, timeoutMessage, stage) {
   const controller = new AbortController();
-  const timeoutMessage = "转写服务响应超时。系统已停止等待本次请求并保留当前任务。";
   let timedOut = false;
   const abortFromParent = () => {
     controller.abort(parentSignal?.reason || new DOMException("Aborted", "AbortError"));
@@ -1019,7 +1002,7 @@ function createAsrRequestSignal(parentSignal) {
   const timer = globalThis.setTimeout(() => {
     timedOut = true;
     controller.abort(new Error(timeoutMessage));
-  }, getAsrClientTimeoutMs());
+  }, timeoutMs);
   if (parentSignal?.aborted) {
     abortFromParent();
   } else {
@@ -1033,7 +1016,64 @@ function createAsrRequestSignal(parentSignal) {
       globalThis.clearTimeout(timer);
       parentSignal?.removeEventListener("abort", abortFromParent);
     },
+    timeoutError: () => {
+      const error = new Error(timeoutMessage);
+      if (stage) error.stage = stage;
+      error.retryable = true;
+      return error;
+    },
   };
+}
+
+async function fetchTimedEndpoint(url, init, options = {}) {
+  const requestSignal = createTimedRequestSignal(
+    options.signal,
+    options.timeoutMs,
+    options.timeoutMessage,
+    options.timeoutStage,
+  );
+  try {
+    return await fetch(url, { ...init, signal: requestSignal.signal });
+  } catch (error) {
+    if (requestSignal.isTimeout()) throw requestSignal.timeoutError();
+    throw error;
+  } finally {
+    requestSignal.cleanup();
+  }
+}
+
+async function callChat(provider, messages, options = {}) {
+  const response = await fetchTimedEndpoint("/api/chat", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      provider,
+      messages,
+      temperature: options.temperature ?? 0.2,
+      max_completion_tokens: options.max_completion_tokens ?? 1200,
+    }),
+  }, {
+    signal: options.signal,
+    timeoutMs: getModelClientTimeoutMs(),
+    timeoutMessage: "文本模型响应超时。系统已停止等待本次请求并保留当前内容。",
+    timeoutStage: "等待文本模型响应",
+  });
+  const data = await readApiResponse(response, "模型请求失败");
+  return getAssistantText(data);
+}
+
+function getAsrClientTimeoutMs() {
+  const configured = Number(globalThis.__ECHO_ASR_CLIENT_TIMEOUT_MS__);
+  return Number.isFinite(configured) && configured > 0 ? configured : DEFAULT_ASR_CLIENT_TIMEOUT_MS;
+}
+
+function createAsrRequestSignal(parentSignal) {
+  return createTimedRequestSignal(
+    parentSignal,
+    getAsrClientTimeoutMs(),
+    "转写服务响应超时。系统已停止等待本次请求并保留当前任务。",
+    "等待转写服务响应",
+  );
 }
 
 async function fetchAsrEndpoint(url, init, options = {}) {
@@ -1041,12 +1081,7 @@ async function fetchAsrEndpoint(url, init, options = {}) {
   try {
     return await fetch(url, { ...init, signal: requestSignal.signal });
   } catch (error) {
-    if (requestSignal.isTimeout()) {
-      const timeoutError = new Error(requestSignal.timeoutMessage);
-      timeoutError.stage = "等待转写服务响应";
-      timeoutError.retryable = true;
-      throw timeoutError;
-    }
+    if (requestSignal.isTimeout()) throw requestSignal.timeoutError();
     throw error;
   } finally {
     requestSignal.cleanup();

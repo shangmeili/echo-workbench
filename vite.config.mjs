@@ -13,6 +13,7 @@ const WORKSPACE_CONFIG_FILE = "workspace.local.json";
 const LEGACY_WORKSPACE_CONFIG_FILE = ".echo-workspace.local.json";
 const MEDIA_STREAM_RANGE_CHUNK_SIZE = 4 * 1024 * 1024;
 const DEFAULT_ASR_FETCH_TIMEOUT_MS = 120_000;
+const DEFAULT_MODEL_FETCH_TIMEOUT_MS = 120_000;
 const localEnvValues = {};
 let rivaClientStatusCache = { checkedAt: 0, available: false, error: "尚未检测 NVIDIA Riva SDK。" };
 
@@ -62,6 +63,24 @@ function positiveIntegerEnv(name, fallback) {
 
 async function fetchWithAsrTimeout(url, options = {}, timeoutMessage = "云端转写请求超时。") {
   const timeoutMs = positiveIntegerEnv("ECHO_ASR_FETCH_TIMEOUT_MS", DEFAULT_ASR_FETCH_TIMEOUT_MS);
+  const controller = new AbortController();
+  const timer = setTimeout(() => {
+    controller.abort(new Error(timeoutMessage));
+  }, timeoutMs);
+  try {
+    return await fetch(url, { ...options, signal: controller.signal });
+  } catch (error) {
+    if (controller.signal.aborted) {
+      throw new Error(timeoutMessage);
+    }
+    throw error;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function fetchWithModelTimeout(url, options = {}, timeoutMessage = "文本模型请求超时。") {
+  const timeoutMs = positiveIntegerEnv("ECHO_MODEL_FETCH_TIMEOUT_MS", DEFAULT_MODEL_FETCH_TIMEOUT_MS);
   const controller = new AbortController();
   const timer = setTimeout(() => {
     controller.abort(new Error(timeoutMessage));
@@ -757,14 +776,14 @@ async function forwardOpenAICompatible(path, provider, payload, method = "POST")
     throw new Error("缺少 API Key。请在模型配置中填写，或在本地服务环境中设置 MINIMAX_API_KEY。");
   }
 
-  const response = await fetch(`${baseUrl}${path}`, {
+  const response = await fetchWithModelTimeout(`${baseUrl}${path}`, {
     method,
     headers: {
       Authorization: `Bearer ${apiKey}`,
       "Content-Type": "application/json",
     },
     body: method === "GET" ? undefined : JSON.stringify(payload),
-  });
+  }, method === "GET" ? "读取模型列表超时。" : "文本模型请求超时。");
 
   const text = await response.text();
   let data;
