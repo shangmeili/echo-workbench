@@ -1993,6 +1993,9 @@ try {
         contentType: "application/json",
         body: JSON.stringify({
           error: "云端转写请求超时或上游暂不可用。请稍后重试。",
+          stage: "调用转写服务",
+          code: "ASR_STAGE_FAILED",
+          retryable: true,
         }),
       });
       return;
@@ -2133,6 +2136,7 @@ try {
   await assert.doesNotReject(() => page.getByRole("button", { name: /开始转写/ }).first().click());
   await page.waitForFunction(() => document.querySelector(".transcription-status-card.error")?.textContent?.includes("转写未完成"));
   assert.match(await page.locator(".transcription-status-card.error").innerText(), /云端转写请求超时或上游暂不可用/);
+  assert.match(await page.locator(".transcription-status-card.error").innerText(), /阶段：调用转写服务/);
   assert.equal(await page.locator(".subtitle-table").count(), 0, "failed transcription should not create proofreading rows");
   assert.equal(await page.getByRole("button", { name: /开始转写/ }).first().isEnabled(), true, "failed transcription should return to a retryable state with the error still visible");
   asrMode = "textFail";

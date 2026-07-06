@@ -862,10 +862,11 @@ function wait(ms, signal) {
 function formatAsrFailureMessage(error) {
   if (error?.name === "AbortError") return "已取消转写。已保留当前媒体和已有校对内容。";
   const raw = String(error?.message || "").trim();
+  const stageText = error?.stage ? `${error.stage}失败：` : "";
   if (isTransientAsrConnectionError(error)) {
-    return "转写未完成：转写服务连接中断，系统已自动重试并保留当前任务。没有生成不完整结果，可以直接再次开始，或在模型配置中切换可用转写服务。";
+    return `转写未完成：${stageText}转写服务连接中断，系统已自动重试并保留当前任务。没有生成不完整结果，可以直接再次开始，或在模型配置中切换可用转写服务。`;
   }
-  return `转写未完成：${raw || "云端转写服务未返回可用结果"}。已保留当前媒体和已有校对内容。`;
+  return `转写未完成：${stageText}${raw || "云端转写服务未返回可用结果"}。已保留当前媒体和已有校对内容，可以直接重试或切换转写服务。`;
 }
 
 function getAssistantText(data) {
@@ -979,7 +980,11 @@ async function readApiResponse(response, fallbackMessage) {
     data = { error: text };
   }
   if (!response.ok) {
-    throw new Error(data.error || data.message || fallbackMessage);
+    const error = new Error(data.error || data.message || fallbackMessage);
+    error.stage = data.stage || "";
+    error.code = data.code || "";
+    error.retryable = data.retryable;
+    throw error;
   }
   return data;
 }
@@ -1773,9 +1778,20 @@ function WorkbenchView({ activeTool, onBackHome, rows, setRows, media, setMedia,
           ? "使用备用音频文件转写，视频用于预览校对"
         : videoUsesEmbeddedAudio
           ? "从视频内音轨生成转写输入，并保留视频预览校对"
-        : mediaNeedsBrowserDecode
-          ? "先转换并增强音频，再调用云端转写服务"
-          : `使用 ${asrProvider.model || "云端 ASR"} 生成可编辑文本`;
+          : mediaNeedsBrowserDecode
+            ? "先转换并增强音频，再调用云端转写服务"
+            : `使用 ${asrProvider.model || "云端 ASR"} 生成可编辑文本`;
+  const startBlockedMessage = !workspaceReady
+    ? "本地工作区未配置，无法保存媒体副本和转写结果。"
+    : !hasTranscriptionInput
+      ? "没有可提交的媒体输入，请上传媒体或重新打开可恢复的本地项目。"
+      : !asrConfigured
+        ? "转写服务未配置，无法提交云端转写任务。"
+        : !asrDependencyOk
+          ? "当前转写服务依赖未就绪，无法提交任务。"
+          : !asrLanguageCompatible
+            ? languageCompatibilityWarning
+            : "";
   const asrBlocked = !asrConfigured || !asrDependencyOk || !asrLanguageCompatible;
   const asrBlockerTitle = !asrConfigured ? "转写服务未配置" : !asrDependencyOk ? "转写依赖未就绪" : "模型与源语言不匹配";
   const asrBlockerDetail = !asrConfigured
@@ -2473,22 +2489,33 @@ ${rawText}`;
   };
 
   const startTranscription = async () => {
-    if (!workspaceReady || !hasTranscriptionInput || !transcriptionReady || busy === "asr") return;
+    if (busy === "asr") return;
+    if (!workspaceReady || !hasTranscriptionInput || !transcriptionReady || !asrLanguageCompatible) {
+      const errorMessage = `转写未开始：${startBlockedMessage || startTranscriptionHint}`;
+      setMessage(errorMessage);
+      setTranscriptionStatus({
+        state: "error",
+        message: errorMessage,
+        stage: !workspaceReady || !hasTranscriptionInput ? "准备转写输入" : "读取转写配置",
+        retryable: Boolean(workspaceReady && hasTranscriptionInput),
+      });
+      return;
+    }
     const compatibilityMessage = getAsrLanguageCompatibilityWarning(asrProvider, sourceLanguage);
     if (compatibilityMessage) {
       const errorMessage = `转写未开始：${compatibilityMessage}`;
       setMessage(errorMessage);
-      setTranscriptionStatus({ state: "error", message: errorMessage });
+      setTranscriptionStatus({ state: "error", message: errorMessage, stage: "读取转写配置", retryable: true });
       return;
     }
     const abortController = new AbortController();
     asrAbortRef.current = abortController;
     setBusy("asr");
     setMessage("");
-    setTranscriptionStatus({ state: "running", message: "正在准备转写任务。" });
-    const setTranscriptionProgress = (text) => {
+    setTranscriptionStatus({ state: "running", message: "正在准备转写任务。", stage: "准备转写输入" });
+    const setTranscriptionProgress = (text, stage = "") => {
       setMessage(text);
-      setTranscriptionStatus({ state: "running", message: text });
+      setTranscriptionStatus({ state: "running", message: text, stage });
     };
     const submitAsrInput = async (input, requestedLanguageCode) => {
       const request = (languageCodeForRequest) => (input.workspaceProjectId
@@ -2498,7 +2525,7 @@ ${rawText}`;
         return await request(requestedLanguageCode);
       } catch (error) {
         if (isTransientAsrConnectionError(error)) {
-          setTranscriptionProgress("转写服务连接中断，正在自动重试。");
+          setTranscriptionProgress("转写服务连接中断，正在自动重试。", error.stage || "连接转写服务");
           await wait(900, abortController.signal);
           return request(requestedLanguageCode);
         }
@@ -2506,7 +2533,7 @@ ${rawText}`;
         if (!isAsrLanguageParameterError(error) || !fallbackLanguageCode || fallbackLanguageCode === requestedLanguageCode) {
           throw error;
         }
-        setTranscriptionProgress(`当前转写服务拒绝语言参数，已自动改用 ${fallbackLanguageCode} 重试。`);
+        setTranscriptionProgress(`当前转写服务拒绝语言参数，已自动改用 ${fallbackLanguageCode} 重试。`, "读取转写配置");
         return request(fallbackLanguageCode);
       }
     };
@@ -2526,7 +2553,7 @@ ${rawText}`;
       const recoveredFile = !asrSource.file && !workspaceSourceReady && asrSource.workspaceUrl
         ? await fileFromWorkspaceMedia(asrSource)
         : null;
-      if (recoveredFile) setTranscriptionProgress("已从本地工作区读取媒体副本，正在准备转写输入。");
+      if (recoveredFile) setTranscriptionProgress("已从本地工作区读取媒体副本，正在准备转写输入。", "读取本地工作区媒体");
       const asrFile = asrSource.file || recoveredFile;
       const asrInputs = asrFile
         ? await prepareAsrInputs(asrFile, asrSource.duration, setTranscriptionProgress, asrProvider)
@@ -2550,7 +2577,7 @@ ${rawText}`;
         const input = asrInputs[index];
         setTranscriptionProgress(asrInputs.length > 1
           ? `正在调用 ${asrProvider.model || "云端 ASR"} 转写第 ${index + 1}/${asrInputs.length} 段。`
-          : `正在调用 ${asrProvider.model || "云端 ASR"} 转写。`);
+          : `正在调用 ${asrProvider.model || "云端 ASR"} 转写。`, "调用转写服务");
         throwIfAsrAborted(abortController.signal);
         const result = await submitAsrInput(input, languageCode);
         throwIfAsrAborted(abortController.signal);
@@ -2608,13 +2635,16 @@ ${rawText}`;
       const qualityText = qualityIssue ? ` ${qualityIssue}` : " 请继续校对时间轴、专有名词和低置信片段。";
       const successMessage = hasTiming ? `${conversionText}${chunkText}${dedupeText}云端转写完成，已生成 ${reviewRows.length} 条可编辑段落。${correctionText}${qualityText}` : `${conversionText}${chunkText}${dedupeText}云端转写完成，已生成 ${reviewRows.length} 条可编辑段落；当前模型未返回词级时间戳，时间轴已按文本自动分段，请校对。${correctionText}${qualityText}`;
       setMessage(successMessage);
-      setTranscriptionStatus({ state: "success", message: successMessage });
+      setTranscriptionStatus({ state: "success", message: successMessage, stage: "生成校对结果" });
     } catch (error) {
       const errorMessage = formatAsrFailureMessage(error);
       setMessage(errorMessage);
       setTranscriptionStatus({
         state: error?.name === "AbortError" ? "cancelled" : "error",
         message: errorMessage,
+        stage: error?.stage || (error?.name === "AbortError" ? "取消转写" : "调用转写服务"),
+        code: error?.code || "",
+        retryable: error?.retryable ?? true,
       });
     } finally {
       if (asrAbortRef.current === abortController) asrAbortRef.current = null;
@@ -3665,6 +3695,9 @@ ${JSON.stringify(chunk.map((row) => ({ id: row.id, start: row.start, end: row.en
                           ? "转写已取消"
                           : "转写完成"}
                   </strong>
+                  {transcriptionStatus.stage && (
+                    <em className="status-stage">阶段：{transcriptionStatus.stage}</em>
+                  )}
                   <span>{transcriptionStatus.message}</span>
                 </div>
                 {transcriptionStatus.state === "error" && (

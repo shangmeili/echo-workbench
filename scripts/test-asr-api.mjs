@@ -108,6 +108,37 @@ try {
   assert.equal(requests.filter((item) => item.url.includes("dashscope")).length, 5);
 
   globalThis.fetch = async (url, options = {}) => {
+    requests.push({ url, method: options.method, mode: "dashscope-policy-fail" });
+    if (url.includes("/uploads?action=getPolicy")) {
+      return new Response(JSON.stringify({ message: "policy denied" }), {
+        status: 403,
+        headers: { "Content-Type": "application/json; charset=utf-8" },
+      });
+    }
+    throw new Error(`unexpected fetch ${url}`);
+  };
+
+  await assert.rejects(
+    () => transcribeWithNvidia({
+      provider: {
+        transport: "dashscope-funasr",
+        endpoint: "https://dashscope.aliyuncs.com/api/v1",
+        model: "fun-asr",
+        apiKey: "dashscope-test-token",
+        languageCode: "zh-CN",
+      },
+      file: tinyWavBuffer(),
+      fileName: "dashscope-policy-fail.mp4",
+    }),
+    (error) => {
+      assert.equal(error.asrStage, "获取百炼上传凭证");
+      assert.equal(error.retryable, true);
+      assert.match(error.message, /百炼转写任务未完成/);
+      return true;
+    },
+  );
+
+  globalThis.fetch = async (url, options = {}) => {
     const body = options.body;
     assert.equal(url, "https://asr.example.test/v1/audio/transcriptions");
     assert.equal(options.method, "POST");
@@ -146,10 +177,39 @@ try {
     fileName: "api-transcribe-test.wav",
   });
 
-  assert.equal(requests.length, 6);
+  assert.equal(requests.length, 7);
   assert.equal(result.provider, "nvidia-http");
   assert.equal(result.segments.length, 2);
   assert.match(result.text, /回响工作台/);
+
+  globalThis.fetch = async (url) => {
+    requests.push({ url, mode: "http-fail" });
+    return new Response(JSON.stringify({ error: { message: "upstream failed" } }), {
+      status: 502,
+      headers: { "Content-Type": "application/json; charset=utf-8" },
+    });
+  };
+
+  await assert.rejects(
+    () => transcribeWithNvidia({
+      provider: {
+        transport: "nvidia-http",
+        endpoint: "https://asr.example.test/v1/audio/transcriptions",
+        model: "mock-asr",
+        apiKey: "test-only-token",
+        languageCode: "zh",
+        sendModel: true,
+      },
+      file: tinyWavBuffer(),
+      fileName: "api-transcribe-fail.wav",
+    }),
+    (error) => {
+      assert.equal(error.asrStage, "调用 HTTP 转写端点");
+      assert.equal(error.retryable, true);
+      assert.match(error.message, /upstream failed/);
+      return true;
+    },
+  );
 
   const rows = rowsFromAsrResult(result, 5);
   assert.deepEqual(
@@ -196,7 +256,7 @@ try {
     fileName: "openai-whisper-test.wav",
   });
 
-  assert.equal(requests.length, 7);
+  assert.equal(requests.length, 9);
   assert.equal(whisperResult.words.length, 2);
   assert.equal(whisperResult.segments.length, 1);
 
@@ -236,7 +296,7 @@ try {
     fileName: "groq-whisper-test.wav",
   });
 
-  assert.equal(requests.length, 8);
+  assert.equal(requests.length, 10);
   assert.equal(groqResult.words.length, 1);
   assert.equal(groqResult.segments.length, 1);
 
@@ -268,7 +328,7 @@ try {
     fileName: "groq-env-test.wav",
   });
 
-  assert.equal(requests.length, 9);
+  assert.equal(requests.length, 11);
   assert.equal(groqEnvResult.segments.length, 1);
   delete process.env.DASHSCOPE_API_KEY;
   delete process.env.GROQ_API_KEY;
@@ -326,7 +386,7 @@ try {
     fileName: "nvidia-nim-test.wav",
   });
 
-  assert.equal(requests.length, 10);
+  assert.equal(requests.length, 12);
   assert.equal(nimResult.segments.length, 1);
 
   const qwenDashScopeRequestCount = requests.length;

@@ -3091,6 +3091,18 @@ h1 {
   font-size: 14px;
 }
 
+.transcription-status-card .status-stage {
+  width: fit-content;
+  padding: 3px 8px;
+  border: 1px solid rgba(99, 86, 238, 0.14);
+  border-radius: 999px;
+  background: rgba(99, 86, 238, 0.08);
+  color: #5b4ee6;
+  font-size: 12px;
+  font-style: normal;
+  font-weight: 800;
+}
+
 .transcription-status-card span {
   font-size: 13px;
   line-height: 1.55;

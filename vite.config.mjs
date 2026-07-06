@@ -634,31 +634,59 @@ export function sanitizeNvidiaAsrError(error) {
     .replace(/sk-[A-Za-z0-9._~+/=-]+/g, "sk-[hidden]");
   const lower = clean.toLowerCase();
   if (/dns|lookup|resolve|could not contact dns|name resolution|grpc\.nvcf/.test(lower)) {
-    return "云端转写服务暂时无法解析或连接。请检查网络、代理/DNS，或稍后重试；如果部署在服务器上，请确认服务器可以访问当前 ASR Endpoint。";
+    return "云端转写服务暂时无法解析或连接。系统已保留当前任务，可稍后重试；服务器部署时需要确保运行环境可访问当前 ASR Endpoint。";
   }
-  if (/unauth|permission|forbidden|401|403|api key|authorization|authentication/.test(lower)) {
-    return "云端转写鉴权失败。请检查 ASR API Key 是否有效、是否有当前模型或 Endpoint 的调用权限。";
+  if (/unauth|permission|forbidden|401|403|authorization|authentication/.test(lower)) {
+    return "云端转写鉴权失败。当前 Key 无法调用该模型或 Endpoint；需要更换有效 Key 或切换到有权限的转写服务。";
   }
   if (/not found|function id|function-id|endpoint|404/.test(lower)) {
-    return "云端转写端点不可用。请在模型配置中切换预设，或核对 HTTP Endpoint / Riva Function ID。";
+    return "云端转写端点不可用。需要在模型配置中切换预设，或核对 HTTP Endpoint / Riva Function ID。";
   }
   if (/unavailable model requested|language_code|unsupported language|invalid_argument/.test(lower)) {
     return "当前转写模型拒绝了识别语言或音频参数。系统会自动尝试服务默认语言；如果仍失败，说明当前端点与这段素材不兼容。";
   }
   if (/deadline|timeout|timed out|unavailable|temporarily unavailable/.test(lower)) {
-    return "云端转写请求超时或上游暂不可用。请稍后重试；长音频可先切换更稳定的模型或缩短文件后再试。";
+    return "云端转写请求超时或上游暂不可用。系统已保留当前任务，可稍后重试；长音频建议切换更稳定的模型或缩短文件后再试。";
   }
   if (/internal error while making inference request|internal.*inference|inference request/.test(lower)) {
-    return "云端转写上游推理请求未完成。请换用一段清晰的真实语音样本重试；如果仍失败，请切换转写模型或核对当前端点权限。";
+    return "云端转写上游推理请求未完成。系统未写入不完整结果；连续失败时需要切换转写模型或核对当前端点权限。";
   }
   if (/invalid|audio|encoding|sample|format|decode|wav|flac/.test(lower)) {
-    return "云端转写服务无法识别当前音频输入。请使用清晰的 WAV/FLAC 音频，或在视频流程中补充独立音频文件后重试。";
+    return "云端转写服务无法识别当前音频输入。系统已保留媒体；可更换清晰 WAV/FLAC 音频，或在视频流程中补充独立音频文件后重试。";
   }
   if (/dashscope|task_status|transcription_url|oss|policy|upload/.test(lower)) {
-    return "百炼转写任务未完成。请检查 DashScope Key、模型权限、文件格式和网络连接后重试。";
+    return "百炼转写任务未完成。系统已保留当前任务；连续失败时需要更换 DashScope Key、模型权限、文件格式或网络环境后重试。";
   }
-  if (!clean) return "云端转写失败。请检查转写服务配置和音频文件后重试。";
+  if (!clean) return "云端转写失败。系统已保留当前任务，可切换转写服务或更换音频文件后重试。";
   return clean.length > 280 ? `${clean.slice(0, 280)}...` : clean;
+}
+
+function createAsrPipelineError(stage, message, options = {}) {
+  const error = new Error(sanitizeNvidiaAsrError(message));
+  error.asrStage = stage || "调用转写服务";
+  error.asrCode = options.code || "ASR_STAGE_FAILED";
+  error.retryable = options.retryable ?? true;
+  if (options.cause) error.cause = options.cause;
+  return error;
+}
+
+async function withAsrStage(stage, task, options = {}) {
+  try {
+    return await task();
+  } catch (error) {
+    if (error?.asrStage) throw error;
+    throw createAsrPipelineError(stage, error?.message || error || "转写阶段失败。", { ...options, cause: error });
+  }
+}
+
+function asrErrorPayload(error, fallbackStage = "调用转写服务") {
+  const message = sanitizeNvidiaAsrError(error);
+  return {
+    error: message,
+    stage: error?.asrStage || fallbackStage,
+    code: error?.asrCode || "ASR_FAILED",
+    retryable: error?.retryable ?? true,
+  };
 }
 
 function detectRivaClient() {
@@ -1072,14 +1100,16 @@ async function pollDashScopeTask({ apiKey, baseUrl, taskId, timeoutMs = 300_000 
 async function callDashScopeFunAsr({ apiKey, endpoint, model, languageCode, file, fileName }) {
   if (!model) throw new Error("缺少百炼 ASR 模型名称。");
   const baseUrl = dashScopeBaseUrl(endpoint);
-  const policy = await getDashScopeUploadPolicy({ apiKey, baseUrl, model });
-  const ossUrl = await uploadDashScopeFile({ policy, file, fileName });
-  const taskId = await submitDashScopeTranscription({ apiKey, baseUrl, model, ossUrl, languageCode });
-  const taskData = await pollDashScopeTask({ apiKey, baseUrl, taskId });
+  const policy = await withAsrStage("获取百炼上传凭证", () => getDashScopeUploadPolicy({ apiKey, baseUrl, model }));
+  const ossUrl = await withAsrStage("上传媒体到百炼临时存储", () => uploadDashScopeFile({ policy, file, fileName }));
+  const taskId = await withAsrStage("提交百炼转写任务", () => submitDashScopeTranscription({ apiKey, baseUrl, model, ossUrl, languageCode }));
+  const taskData = await withAsrStage("等待百炼转写结果", () => pollDashScopeTask({ apiKey, baseUrl, taskId }));
   const transcriptionUrl = extractDashScopeTranscriptionUrl(taskData);
   if (!transcriptionUrl) throw new Error("百炼转写任务未返回 transcription_url。");
-  const resultResponse = await fetch(transcriptionUrl);
-  const resultData = await readJsonResponse(resultResponse, "读取百炼转写结果失败。");
+  const resultData = await withAsrStage("读取百炼转写结果", async () => {
+    const resultResponse = await fetch(transcriptionUrl);
+    return readJsonResponse(resultResponse, "读取百炼转写结果失败。");
+  });
   return normalizeDashScopeTranscription(resultData);
 }
 
@@ -1113,7 +1143,9 @@ function mergeRivaChunkResults(results = []) {
 
 export async function transcribeWithNvidia({ provider, file, fileName }) {
   const apiKey = resolveNvidiaApiKey(provider);
-  if (!apiKey) throw new Error("缺少 ASR API Key。请先在模型配置中填写转写服务 Key。");
+  if (!apiKey) {
+    throw createAsrPipelineError("读取转写配置", "缺少 ASR API Key。请先在模型配置中填写转写服务 Key。", { code: "ASR_MISSING_KEY", retryable: false });
+  }
   const transport = provider.transport || "nvidia-riva-grpc";
   const languageCode = provider.languageCode || "multi";
 
@@ -1121,37 +1153,40 @@ export async function transcribeWithNvidia({ provider, file, fileName }) {
     try {
       return await callDashScopeFunAsr({ apiKey, endpoint: provider.endpoint, model: provider.model || "fun-asr", languageCode, file, fileName });
     } catch (error) {
-      throw new Error(sanitizeNvidiaAsrError(error));
+      if (error?.asrStage) throw error;
+      throw createAsrPipelineError("调用百炼转写服务", error?.message || error || "百炼转写失败。");
     }
   }
 
   if (transport === "nvidia-http") {
-    if (!provider.endpoint) throw new Error("缺少 HTTP 转写端点。");
-    if (provider.sendModel && !provider.model) throw new Error("缺少 ASR 模型名称。OpenAI-compatible 转写端点需要填写模型。");
-    return callNvidiaHttpAsr({ apiKey, endpoint: provider.endpoint, model: provider.model, languageCode, file, fileName, sendModel: Boolean(provider.sendModel) });
+    if (!provider.endpoint) throw createAsrPipelineError("读取转写配置", "缺少 HTTP 转写端点。", { code: "ASR_MISSING_ENDPOINT", retryable: false });
+    if (provider.sendModel && !provider.model) {
+      throw createAsrPipelineError("读取转写配置", "缺少 ASR 模型名称。OpenAI-compatible 转写端点需要填写模型。", { code: "ASR_MISSING_MODEL", retryable: false });
+    }
+    return withAsrStage("调用 HTTP 转写端点", () => callNvidiaHttpAsr({ apiKey, endpoint: provider.endpoint, model: provider.model, languageCode, file, fileName, sendModel: Boolean(provider.sendModel) }));
   }
 
-  if (!provider.functionId) throw new Error("缺少 NVIDIA Riva function id。");
+  if (!provider.functionId) throw createAsrPipelineError("读取转写配置", "缺少 NVIDIA Riva function id。", { code: "ASR_MISSING_FUNCTION_ID", retryable: false });
   const rivaClientStatus = await detectRivaClient();
   if (!rivaClientStatus.available) {
-    throw new Error(rivaClientStatus.error || "缺少 NVIDIA Riva SDK。");
+    throw createAsrPipelineError("检测 Riva 依赖", rivaClientStatus.error || "缺少 NVIDIA Riva SDK。", { code: "ASR_RIVA_DEPENDENCY_MISSING", retryable: false });
   }
   const tempDir = await mkdtemp(join(tmpdir(), "echo-asr-"));
   const extension = extname(fileName || "") || ".wav";
   const filePath = join(tempDir, `input${extension}`);
   try {
     await writeFile(filePath, file);
-    const rivaInputs = await prepareRivaAudioInputs({ inputPath: filePath, inputName: fileName || `input${extension}`, tempDir });
+    const rivaInputs = await withAsrStage("准备 Riva 音频输入", () => prepareRivaAudioInputs({ inputPath: filePath, inputName: fileName || `input${extension}`, tempDir }));
     const results = [];
     for (const input of rivaInputs) {
-      const result = await runPythonAsr({
+      const result = await withAsrStage("调用 NVIDIA Riva 转写", () => runPythonAsr({
         apiKey,
         filePath: input.path,
         functionId: provider.functionId,
         endpoint: provider.endpoint,
         languageCode,
         translate: Boolean(provider.translate),
-      });
+      }));
       results.push({ offset: input.offset, result });
     }
     return mergeRivaChunkResults(results);
@@ -1347,17 +1382,17 @@ function registerLocalApi(middlewares, mode) {
         }
         try {
           refreshLocalEnv(mode);
-          const body = await readJsonBody(req);
+          const body = await withAsrStage("读取转写请求", () => readJsonBody(req), { retryable: false });
           const field = body.field === "asrAudio" ? "asrAudio" : "media";
-          const { filePath, fileName } = await workspaceProjectFileSource(body.projectId, field);
+          const { filePath, fileName } = await withAsrStage("读取本地工作区媒体", () => workspaceProjectFileSource(body.projectId, field), { retryable: false });
           const result = await transcribeWithNvidia({
             provider: body.provider || {},
-            file: await readFile(filePath),
+            file: await withAsrStage("读取本地工作区媒体", () => readFile(filePath), { retryable: false }),
             fileName: fileName || "media",
           });
           sendJson(res, 200, result);
         } catch (error) {
-          sendJson(res, 400, { error: error.message });
+          sendJson(res, 400, asrErrorPayload(error));
         }
       });
 
@@ -1368,14 +1403,16 @@ function registerLocalApi(middlewares, mode) {
         }
         try {
           refreshLocalEnv(mode);
-          const form = await readFormData(req);
+          const form = await withAsrStage("读取上传媒体", () => readFormData(req), { retryable: false });
           const uploaded = form.get("file");
           if (!uploaded || typeof uploaded === "string") {
-            throw new Error("请先上传音频或视频文件。");
+            throw createAsrPipelineError("读取上传媒体", "请先上传音频或视频文件。", { code: "ASR_MISSING_INPUT", retryable: false });
           }
           const providerRaw = form.get("provider");
-          const provider = providerRaw ? JSON.parse(String(providerRaw)) : {};
-          const arrayBuffer = await uploaded.arrayBuffer();
+          const provider = providerRaw
+            ? await withAsrStage("读取转写配置", async () => JSON.parse(String(providerRaw)), { retryable: false })
+            : {};
+          const arrayBuffer = await withAsrStage("读取上传媒体", () => uploaded.arrayBuffer(), { retryable: false });
           const result = await transcribeWithNvidia({
             provider,
             file: Buffer.from(arrayBuffer),
@@ -1383,7 +1420,7 @@ function registerLocalApi(middlewares, mode) {
           });
           sendJson(res, 200, result);
         } catch (error) {
-          sendJson(res, 400, { error: error.message });
+          sendJson(res, 400, asrErrorPayload(error));
         }
       });
 
