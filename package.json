@@ -28,6 +28,7 @@
     "test:product-flow": "node scripts/test-product-flow.mjs",
     "test:text-live": "node scripts/test-live-text-model.mjs",
     "test:asr-live": "node scripts/test-live-asr.mjs",
+    "test:asr-ui-live": "node scripts/test-live-asr-ui.mjs",
     "build": "vite build --configLoader native",
     "preview": "vite preview --host 127.0.0.1 --port 53815 --configLoader native"
   },
