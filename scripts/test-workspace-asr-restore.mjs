@@ -128,11 +128,8 @@ try {
       body: JSON.stringify({ text: "回响工作台测试样本。", segments: [{ start: 0, end: 1, text: "回响工作台测试样本。" }] }),
     });
   });
-  const sampleButton = page.getByText("使用测试样本", { exact: true });
-  await sampleButton.click();
-  await page.waitForFunction(() => document.querySelector(".config-panel")?.textContent?.includes("已载入内置测试样本"));
-  const testButton = page.getByRole("button", { name: "测试转写服务" });
-  assert.equal(await testButton.isEnabled(), true, "built-in sample should enable real ASR test action");
+  const testButton = page.getByRole("button", { name: "保存并测试" });
+  assert.equal(await testButton.isEnabled(), true, "built-in sample should make real ASR test action immediately available");
   await testButton.click();
   await page.waitForFunction(() => document.querySelector(".config-panel")?.textContent?.includes("测试样本已提交"));
 } finally {

@@ -4184,7 +4184,7 @@ function AsrConfigPanel({ asrProvider, setAsrProvider, serverStatus, refreshServ
   const tested = draft.lastTest?.ok === true;
   const failed = draft.lastTest?.ok === false;
   const rivaReady = asrDependencyReady(draft, serverStatus);
-  const canTest = ready && rivaReady && hasTestSample;
+  const canTest = ready && rivaReady;
   const dependencyWarning = usesRivaGrpc && !serverStatus.rivaClientAvailable
     ? `当前服务未检测到 NVIDIA Riva SDK，gRPC 接入无法完成转写。${serverStatus.rivaClientError || ""}`
     : "";
@@ -4196,21 +4196,20 @@ function AsrConfigPanel({ asrProvider, setAsrProvider, serverStatus, refreshServ
   ].filter(Boolean);
   const missingTargetText = missingAsrParts.length
     ? `请填写 ${missingAsrParts.join("、")}；未配置时工作台不会启用开始转写。`
-    : "转写服务已配置，可先测试端点，再在工作台上传真实音视频转写。";
+    : "转写服务已配置。可直接保存，或用内置样本验证真实识别结果。";
   const asrTestBlockedParts = [
     ...missingAsrParts,
     !rivaReady ? "服务依赖" : "",
-    !hasTestSample ? "测试样本" : "",
   ].filter(Boolean);
   const asrTestBlockedText = asrTestBlockedParts.length
     ? `测试前需先补齐：${asrTestBlockedParts.join("、")}。`
     : "";
   const configStateText = dependencyWarning || keyMismatchWarning || (ready
     ? usesRivaGrpc
-      ? `${credentialLabel} 已可用于音频转写；gRPC 视频流程会先尝试从视频音轨生成音频输入。`
+      ? `${credentialLabel} 已可用于音频转写。`
       : usesDashScopeFunAsr
-        ? `${credentialLabel} 已可用于百炼 ASR；工作台会提交原始音视频并轮询转写结果。`
-        : `${credentialLabel} 已可用于 HTTP 转写端点；可先测试端点，再在工作台上传真实音视频转写。`
+        ? `${credentialLabel} 已可用于百炼 ASR。`
+        : `${credentialLabel} 已可用于 HTTP 转写端点。`
     : missingTargetText);
   const badgeText = !ready ? "待配置" : !rivaReady ? "依赖缺失" : failed ? "测试失败" : tested ? "已验证" : "已配置";
 
@@ -4266,19 +4265,23 @@ function AsrConfigPanel({ asrProvider, setAsrProvider, serverStatus, refreshServ
     setResult("");
   };
 
+  const loadBuiltInTestSample = async () => {
+    const response = await fetch("/api/asr/test-sample");
+    if (!response.ok) {
+      const data = await response.json().catch(() => ({}));
+      throw new Error(data.error || "生成测试样本失败。");
+    }
+    const blob = await response.blob();
+    return new File([blob], "echo-workbench-test.m4a", { type: blob.type || "audio/mp4", lastModified: Date.now() });
+  };
+
   const useBuiltInTestSample = async () => {
     setBusy("sample");
     setResult("");
     try {
-      const response = await fetch("/api/asr/test-sample");
-      if (!response.ok) {
-        const data = await response.json().catch(() => ({}));
-        throw new Error(data.error || "生成测试样本失败。");
-      }
-      const blob = await response.blob();
-      const sample = new File([blob], "echo-workbench-test.m4a", { type: blob.type || "audio/mp4", lastModified: Date.now() });
+      const sample = await loadBuiltInTestSample();
       setTestSample(sample);
-      setResult("已载入内置测试样本。点击“测试转写服务”会调用真实转写服务验证。");
+      setResult("已载入内置测试样本。点击“保存并测试”会调用真实转写服务验证。");
     } catch (error) {
       setResult(error.message || "生成测试样本失败。请手动选择一段清晰语音音频。");
     } finally {
@@ -4293,13 +4296,11 @@ function AsrConfigPanel({ asrProvider, setAsrProvider, serverStatus, refreshServ
       if (!hasCredential || !hasTargetAddress || !hasRequiredModel) {
         throw new Error(missingTargetText);
       }
-      if (!testSample) {
-        throw new Error("请先选择一段清晰语音样本，再测试真实转写效果。");
-      }
       if (!rivaReady) {
         throw new Error(serverStatus.rivaClientError || "当前 gRPC 接入缺少 NVIDIA Riva SDK。");
       }
-      const testFile = testSample;
+      const testFile = testSample || await loadBuiltInTestSample();
+      if (!testSample) setTestSample(testFile);
       const data = await callAsr(draft, testFile, draft.languageCode || "multi");
       const transcript = String(data?.text || data?.transcript || data?.segments?.map?.((item) => item.text).filter(Boolean).join(" ") || "").trim();
       persist({ lastTest: { ok: true, message: "转写样本已返回结果。", at: Date.now() } });
@@ -4318,7 +4319,7 @@ function AsrConfigPanel({ asrProvider, setAsrProvider, serverStatus, refreshServ
         <h2><AudioWaveform size={20} />转写服务</h2>
         <span className={`config-badge ${ready && rivaReady && !failed ? "ok" : "warn"}`}>{badgeText}</span>
       </div>
-      <div className="form-grid">
+      <div className="form-grid asr-core-grid">
         <label>
           提供方
           <select aria-label="转写服务提供方" value={draft.label} onChange={(event) => handleProviderChange(event.target.value)}>
@@ -4344,77 +4345,85 @@ function AsrConfigPanel({ asrProvider, setAsrProvider, serverStatus, refreshServ
           ASR API Key
           <input type="password" value={draft.apiKey} onChange={(event) => updateDraft({ apiKey: event.target.value })} placeholder="只保存在当前浏览器，不写入仓库" />
         </label>
-        <label>
-          模型
-          <input value={draft.model} onChange={(event) => updateDraft({ model: event.target.value })} placeholder={requiresModel ? "例如 whisper-1 / gpt-4o-transcribe / 端点要求的模型名" : "当前端点不需要发送模型名"} />
-        </label>
-        <label>
-          接入协议
-          <select aria-label="转写接入协议" value={draft.transport} onChange={(event) => handleTransportChange(event.target.value)}>
-            <option value="dashscope-funasr">阿里云百炼 ASR</option>
-            <option value="nvidia-http">HTTP audio transcription</option>
-            <option value="nvidia-riva-grpc">NVIDIA Riva gRPC</option>
-          </select>
-        </label>
-        {!usesDashScopeFunAsr && (
-          <label className="span-2">
-            视频输入方式
-            <select aria-label="视频输入方式" value={draft.videoInputMode || "extract"} onChange={(event) => updateDraft({ videoInputMode: event.target.value })}>
-              <option value="extract">从视频内音轨生成音频输入</option>
-              <option value="original">直接提交原始视频</option>
-            </select>
-            <span className="field-note">
-              大多数 audio transcription 端点只接收音频，建议保持默认。只有确认端点支持视频文件时，才选择直接提交原始视频。
-            </span>
-          </label>
-        )}
-        <label className="span-2">
-          {targetLabel}
-          <input
-            value={usesDashScopeFunAsr || draft.transport === "nvidia-http" ? draft.endpoint : draft.functionId}
-            onChange={(event) => {
-              const value = event.target.value;
-              updateDraft(usesDashScopeFunAsr || draft.transport === "nvidia-http" ? { endpoint: value } : { functionId: value });
-            }}
-            placeholder={usesDashScopeFunAsr ? "https://dashscope.aliyuncs.com/api/v1" : draft.transport === "nvidia-http" ? "https://.../v1/audio/transcriptions" : "NVIDIA hosted Riva function id"}
-          />
-          {!usesDashScopeFunAsr && (
-            <span className="field-note">
-              {draft.transport === "nvidia-http"
-                ? "HTTP 端点可使用 OpenAI-compatible audio transcription 服务，或自部署/远程 NVIDIA NIM 的 /v1/audio/transcriptions。NVIDIA Build 的 ASR 模型多为下载或自部署，不会自动提供免费托管端点。"
-                : "仅在你已有可用 Riva gRPC 地址和 Function ID 时使用。NVIDIA Build 页面中的多数 ASR 模型是下载或自部署形态，不等同于稳定免费托管转写端点。"}
-            </span>
-          )}
-        </label>
       </div>
       <div className={`config-state ${ready && !dependencyWarning && !keyMismatchWarning ? "ok" : "warn"}`}>
         {configStateText}
       </div>
-      <div className="asr-test-sample">
-        <input
-          ref={testSampleInputRef}
-          type="file"
-          accept="audio/*"
-          hidden
-          onChange={(event) => {
-            setTestSample(event.target.files?.[0] || null);
-            event.target.value = "";
-          }}
-        />
-        <div>
-          <strong>测试样本</strong>
-          <span>{testSample ? `${testSample.name} · ${(testSample.size / 1024 / 1024).toFixed(1)} MB` : "请选择 5-15 秒清晰语音音频。只有真实样本返回可读文本，才算转写服务可用。"}</span>
+      <details className="advanced-config">
+        <summary>
+          <span><SlidersHorizontal size={17} />高级设置</span>
+          <em>{draft.model || "默认模型"} · {usesDashScopeFunAsr ? "百炼 ASR" : draft.transport === "nvidia-http" ? "HTTP" : "Riva gRPC"}</em>
+        </summary>
+        <div className="form-grid">
+          <label>
+            模型
+            <input value={draft.model} onChange={(event) => updateDraft({ model: event.target.value })} placeholder={requiresModel ? "例如 whisper-1 / gpt-4o-transcribe / 端点要求的模型名" : "当前端点不需要发送模型名"} />
+          </label>
+          <label>
+            接入协议
+            <select aria-label="转写接入协议" value={draft.transport} onChange={(event) => handleTransportChange(event.target.value)}>
+              <option value="dashscope-funasr">阿里云百炼 ASR</option>
+              <option value="nvidia-http">HTTP audio transcription</option>
+              <option value="nvidia-riva-grpc">NVIDIA Riva gRPC</option>
+            </select>
+          </label>
+          {!usesDashScopeFunAsr && (
+            <label className="span-2">
+              视频输入方式
+              <select aria-label="视频输入方式" value={draft.videoInputMode || "extract"} onChange={(event) => updateDraft({ videoInputMode: event.target.value })}>
+                <option value="extract">从视频内音轨生成音频输入</option>
+                <option value="original">直接提交原始视频</option>
+              </select>
+              <span className="field-note">
+                大多数 audio transcription 端点只接收音频，建议保持默认。只有确认端点支持视频文件时，才选择直接提交原始视频。
+              </span>
+            </label>
+          )}
+          <label className="span-2">
+            {targetLabel}
+            <input
+              value={usesDashScopeFunAsr || draft.transport === "nvidia-http" ? draft.endpoint : draft.functionId}
+              onChange={(event) => {
+                const value = event.target.value;
+                updateDraft(usesDashScopeFunAsr || draft.transport === "nvidia-http" ? { endpoint: value } : { functionId: value });
+              }}
+              placeholder={usesDashScopeFunAsr ? "https://dashscope.aliyuncs.com/api/v1" : draft.transport === "nvidia-http" ? "https://.../v1/audio/transcriptions" : "NVIDIA hosted Riva function id"}
+            />
+            {!usesDashScopeFunAsr && (
+              <span className="field-note">
+                {draft.transport === "nvidia-http"
+                  ? "HTTP 端点可使用 OpenAI-compatible audio transcription 服务，或自部署/远程 NVIDIA NIM 的 /v1/audio/transcriptions。NVIDIA Build 的 ASR 模型多为下载或自部署，不会自动提供免费托管端点。"
+                  : "仅在你已有可用 Riva gRPC 地址和 Function ID 时使用。NVIDIA Build 页面中的多数 ASR 模型是下载或自部署形态，不等同于稳定免费托管转写端点。"}
+              </span>
+            )}
+          </label>
         </div>
-        <button className="secondary" type="button" onClick={() => testSampleInputRef.current?.click()}>
-          <Download size={18} />
-          {testSample ? "更换样本" : "选择样本"}
-        </button>
-        <button className="secondary" type="button" onClick={useBuiltInTestSample} disabled={busy === "sample"}>
-          {busy === "sample" ? <Loader2 className="spin" size={18} /> : <Sparkles size={18} />}
-          使用测试样本
-        </button>
-        {testSample && <button className="secondary" type="button" onClick={() => setTestSample(null)}>移除样本</button>}
-      </div>
+        <div className="asr-test-sample">
+          <input
+            ref={testSampleInputRef}
+            type="file"
+            accept="audio/*"
+            hidden
+            onChange={(event) => {
+              setTestSample(event.target.files?.[0] || null);
+              event.target.value = "";
+            }}
+          />
+          <div>
+            <strong>测试样本</strong>
+            <span>{testSample ? `${testSample.name} · ${(testSample.size / 1024 / 1024).toFixed(1)} MB` : "默认测试会自动使用内置语音样本；需要验证特定口音或噪声时再选择自己的音频。"}</span>
+          </div>
+          <button className="secondary" type="button" onClick={() => testSampleInputRef.current?.click()}>
+            <Download size={18} />
+            {testSample ? "更换样本" : "选择样本"}
+          </button>
+          <button className="secondary" type="button" onClick={useBuiltInTestSample} disabled={busy === "sample"}>
+            {busy === "sample" ? <Loader2 className="spin" size={18} /> : <Sparkles size={18} />}
+            使用测试样本
+          </button>
+          {testSample && <button className="secondary" type="button" onClick={() => setTestSample(null)}>移除样本</button>}
+        </div>
+      </details>
       <div className="config-actions">
         {asrTestBlockedText && <p className="config-action-hint">{asrTestBlockedText}</p>}
         <button className="secondary" onClick={() => persist({}, { showResult: true })}>保存转写服务</button>
@@ -4424,9 +4433,9 @@ function AsrConfigPanel({ asrProvider, setAsrProvider, serverStatus, refreshServ
             检测服务依赖
           </button>
         )}
-        <button className="primary" onClick={testAsrConnection} disabled={!canTest || busy === "test"} title={canTest ? "提交测试样本，验证真实转写结果" : !hasTestSample ? "请先选择清晰语音测试样本" : configStateText}>
+        <button className="primary" onClick={testAsrConnection} disabled={!canTest || busy === "test"} title={canTest ? "使用内置样本验证真实转写结果" : configStateText}>
           {busy === "test" ? <Loader2 className="spin" size={18} /> : <Check size={18} />}
-          测试转写服务
+          保存并测试
         </button>
       </div>
       {usesRivaGrpc && !rivaReady && (

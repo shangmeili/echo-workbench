@@ -2376,11 +2376,9 @@ try {
     const asrKeyInput = [...document.querySelectorAll("label")]
       .find((label) => /ASR API Key/.test(label.innerText))
       ?.querySelector("input");
-    const coreAsrLabels = [...document.querySelectorAll(".config-view label")]
-      .filter((label) => /^(模型|接入协议|DashScope Base URL)/.test(label.innerText.trim()));
     const videoInputSelect = document.querySelector("[aria-label='视频输入方式']");
     const asrKeyRect = asrKeyInput?.getBoundingClientRect();
-    const formRect = form?.getBoundingClientRect();
+    const advanced = document.querySelector(".advanced-config");
     const actionButtons = [...document.querySelectorAll(".config-actions button")].map((button) => {
       const rect = button.getBoundingClientRect();
       return { text: button.innerText.trim(), visible: rect.top < window.innerHeight && rect.bottom > 0 };
@@ -2391,31 +2389,35 @@ try {
       actionsVisible: actions ? actions.getBoundingClientRect().bottom <= window.innerHeight + 1 : false,
       asrKeyVisible: Boolean(asrKeyRect && asrKeyRect.top >= 0 && asrKeyRect.bottom <= window.innerHeight),
       hidesFixedDashScopeVideoInput: !videoInputSelect,
-      coreAsrFieldsVisible: coreAsrLabels.every((label) => {
-        const rect = label.getBoundingClientRect();
-        return formRect && rect.top >= formRect.top && rect.bottom <= formRect.bottom + 1;
-      }),
+      advancedCollapsed: advanced ? !advanced.open : false,
+      hidesAdvancedAsrFieldsByDefault: !/DashScope Base URL|接入协议/.test(document.body.innerText),
       actionButtons,
     };
   });
   assert.equal(modelConfigLayout.pageDoesNotScroll, true, "model config should keep actions in the configured viewport instead of relying on page scrolling");
-  assert.equal(modelConfigLayout.formScrollsInternally || modelConfigLayout.coreAsrFieldsVisible, true, "ASR config should either fit core fields in the form area or scroll inside the form area");
   assert.equal(modelConfigLayout.actionsVisible, true, "model config save/test actions should be visible in the first viewport");
   assert.equal(modelConfigLayout.asrKeyVisible, true, "ASR config should expose the API Key input in the first viewport when warning that the key is missing");
   assert.equal(modelConfigLayout.hidesFixedDashScopeVideoInput, true, "DashScope ASR config should not show a disabled video-input dropdown that cannot be changed");
-  assert.equal(modelConfigLayout.coreAsrFieldsVisible, true, "ASR model, transport, and endpoint fields should be fully visible instead of being clipped by status messaging");
+  assert.equal(modelConfigLayout.advancedCollapsed, true, "ASR model, transport, endpoint, and sample controls should be collapsed as advanced settings by default");
+  assert.equal(modelConfigLayout.hidesAdvancedAsrFieldsByDefault, true, "advanced ASR fields should not compete with provider, language, and key in the first viewport");
   assert.equal(modelConfigLayout.actionButtons.every((button) => button.visible), true, "all model config action buttons should be visible without scrolling");
-  const asrTestButton = page.getByRole("button", { name: "测试转写服务" });
+  const asrTestButton = page.getByRole("button", { name: "保存并测试" });
   assert.equal(await asrTestButton.count(), 1);
-  assert.equal(await asrTestButton.isDisabled(), true, "ASR test should require a real audio sample");
-  assert.match(await page.locator(".config-actions").innerText(), /测试样本/, "disabled ASR test should explain which prerequisite is missing");
-  await chooseFile(page, page.getByRole("button", { name: "选择样本" }), sampleAudioPath);
-  await page.waitForTimeout(300);
-  assert.equal(await asrTestButton.isDisabled(), false, "ASR test should be enabled after selecting a sample");
-  assert.doesNotMatch(await page.locator(".config-actions").innerText(), /测试前需先补齐/, "ASR test hint should disappear when prerequisites are satisfied");
+  assert.equal(await asrTestButton.isDisabled(), false, "ASR test should use the built-in sample by default instead of requiring users to choose one first");
+  assert.doesNotMatch(await page.locator(".config-actions").innerText(), /测试样本/, "default ASR test should not ask users to understand sample setup first");
+  await page.route("**/api/asr/test-sample", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "audio/wav",
+      body: await readFile(sampleAudioPath),
+    });
+  });
   await asrTestButton.click();
   await page.waitForTimeout(700);
   assert.match(await page.locator(".config-panel").first().innerText(), /转写样本已返回结果|测试样本已提交/);
+  const advancedConfig = page.locator(".advanced-config");
+  await advancedConfig.evaluate((node) => { node.open = true; });
+  await page.waitForFunction(() => document.querySelector(".advanced-config")?.open);
   await page.getByLabel("转写服务提供方").selectOption({ label: "阿里云百炼 Qwen3-ASR 文件转写" });
   const qwenDashScopeConfig = await page.evaluate(() => {
     const protocolSelect = document.querySelector("[aria-label='转写接入协议']");
@@ -2464,7 +2466,7 @@ try {
     modelInput.dispatchEvent(new Event("input", { bubbles: true }));
   });
   assert.match(await page.locator(".config-state").first().innerText(), /模型/);
-  assert.equal(await page.getByRole("button", { name: "测试转写服务" }).isDisabled(), true);
+  assert.equal(await page.getByRole("button", { name: "保存并测试" }).isDisabled(), true);
   await page.setViewportSize({ width: 390, height: 844 });
   await page.waitForTimeout(300);
   const mobileAsrKeyVisible = await page.evaluate(() => {
