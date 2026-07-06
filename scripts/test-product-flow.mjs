@@ -1072,11 +1072,23 @@ try {
   });
   await assertDirectWorkbenchBackReturnsHome(context);
   const browserErrors = [];
+  let expectedAsrFailureEvents = 0;
   page.on("console", (message) => {
-    if (message.type() === "error") browserErrors.push({ type: "console", text: message.text() });
+    if (message.type() !== "error") return;
+    if (expectedAsrFailureEvents > 0 && /Failed to load resource: the server responded with a status of 400/.test(message.text())) {
+      expectedAsrFailureEvents -= 1;
+      return;
+    }
+    browserErrors.push({ type: "console", text: message.text() });
   });
   page.on("response", async (response) => {
-    if (response.status() >= 400) browserErrors.push({ type: "response", status: response.status(), url: response.url() });
+    if (response.status() >= 400) {
+      if (expectedAsrFailureEvents > 0 && response.status() === 400 && response.url().includes("/api/asr/transcribe")) {
+        expectedAsrFailureEvents -= 1;
+        return;
+      }
+      browserErrors.push({ type: "response", status: response.status(), url: response.url() });
+    }
   });
 
   await page.goto(baseUrl, { waitUntil: "networkidle" });
@@ -1970,6 +1982,16 @@ try {
         releaseHeldAsr = resolve;
       });
     }
+    if (asrMode === "fail") {
+      await route.fulfill({
+        status: 400,
+        contentType: "application/json",
+        body: JSON.stringify({
+          error: "云端转写请求超时或上游暂不可用。请稍后重试。",
+        }),
+      });
+      return;
+    }
     await route.fulfill({
       status: 200,
       contentType: "application/json",
@@ -2089,6 +2111,13 @@ try {
   assert.ok(uploadPreviewErrorLayout.frameHeight <= 360, `unpreviewable uploaded video should use a compact error preview instead of a giant black frame, got ${JSON.stringify(uploadPreviewErrorLayout)}`);
   assert.ok(uploadPreviewErrorLayout.panelHeight <= uploadedVideoLayout.panelHeight, `unpreviewable uploaded video should not expand the media card after preview failure, got ${JSON.stringify(uploadPreviewErrorLayout)}`);
   assert.equal(await page.getByRole("button", { name: /开始转写/ }).first().isEnabled(), true, "media preview errors should not block cloud transcription");
+  asrMode = "fail";
+  expectedAsrFailureEvents = 2;
+  await assert.doesNotReject(() => page.getByRole("button", { name: /开始转写/ }).first().click());
+  await page.waitForFunction(() => document.querySelector(".transcription-status-card.error")?.textContent?.includes("转写未完成"));
+  assert.match(await page.locator(".transcription-status-card.error").innerText(), /云端转写请求超时或上游暂不可用/);
+  assert.equal(await page.locator(".subtitle-table").count(), 0, "failed transcription should not create proofreading rows");
+  assert.equal(await page.getByRole("button", { name: /开始转写/ }).first().isEnabled(), true, "failed transcription should return to a retryable state with the error still visible");
   asrMode = "hold";
   await assert.doesNotReject(() => page.getByRole("button", { name: /开始转写/ }).first().click());
   await page.getByRole("button", { name: /取消转写/ }).waitFor({ state: "visible" });
@@ -2135,7 +2164,7 @@ try {
   asrMode = "normal";
   await assert.doesNotReject(() => page.getByRole("button", { name: /开始转写/ }).first().click());
   await page.waitForTimeout(1200);
-  assert.equal(asrRequestCount, 2);
+  assert.equal(asrRequestCount, 3);
   assert.equal(await page.locator(".subtitle-table .table-row").count() - 1, 2);
   assert.match(await readCorrectionTableValues(page), /音频转写第一句/);
   assert.deepEqual(await readCorrectionTableMode(page), { sourceOnly: true, withTranslation: false, translationEditors: 0 });
@@ -2171,7 +2200,7 @@ try {
   const startButton = page.getByRole("button", { name: /开始转写/ }).first();
   await assert.doesNotReject(() => startButton.click());
   await page.waitForTimeout(1200);
-  assert.equal(asrRequestCount, 3);
+  assert.equal(asrRequestCount, 4);
   assert.equal(await page.locator(".subtitle-table .table-row").count() - 1, 2);
   assert.match(await readCorrectionTableValues(page), /音频转写第一句/);
   assert.deepEqual(await readCorrectionTableMode(page), { sourceOnly: true, withTranslation: false, translationEditors: 0 });

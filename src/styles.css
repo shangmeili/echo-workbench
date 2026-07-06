@@ -3069,6 +3069,53 @@ h1 {
   justify-content: center;
 }
 
+.transcription-status-card {
+  width: calc(100% - 36px);
+  margin: -6px 18px 18px;
+  padding: 12px;
+  display: grid;
+  gap: 10px;
+  border: 1px solid rgba(99, 86, 238, 0.18);
+  border-radius: 12px;
+  background: #f8f7ff;
+  color: #475467;
+}
+
+.transcription-status-card > div:first-child {
+  display: grid;
+  gap: 4px;
+}
+
+.transcription-status-card strong {
+  color: var(--ink);
+  font-size: 14px;
+}
+
+.transcription-status-card span {
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.transcription-status-card.error {
+  border-color: rgba(244, 63, 94, 0.24);
+  background: #fff7f7;
+}
+
+.transcription-status-card.error strong {
+  color: #b42318;
+}
+
+.transcription-status-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.transcription-status-actions .compact-button {
+  width: 100%;
+  justify-content: center;
+}
+
 .export-mode-control {
   width: calc(100% - 28px);
   margin: 8px 14px 0;

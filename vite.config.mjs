@@ -478,7 +478,7 @@ function runLocalCommand(command, args, fallbackMessage) {
   });
 }
 
-const RIVA_CHUNK_SECONDS = 180;
+const RIVA_CHUNK_SECONDS = 60;
 
 function rivaCanReadDirectly(fileName = "") {
   return /\.(wav|flac)$/i.test(fileName);
@@ -643,7 +643,7 @@ export function sanitizeNvidiaAsrError(error) {
     return "云端转写端点不可用。请在模型配置中切换预设，或核对 HTTP Endpoint / Riva Function ID。";
   }
   if (/unavailable model requested|language_code|unsupported language|invalid_argument/.test(lower)) {
-    return "当前转写模型不支持所选识别语言或音频参数。请把识别语言改为“自动识别”或与样本语言一致，或切换到明确支持该语言的转写端点。";
+    return "当前转写模型拒绝了识别语言或音频参数。系统会自动尝试服务默认语言；如果仍失败，说明当前端点与这段素材不兼容。";
   }
   if (/deadline|timeout|timed out|unavailable|temporarily unavailable/.test(lower)) {
     return "云端转写请求超时或上游暂不可用。请稍后重试；长音频可先切换更稳定的模型或缩短文件后再试。";
