@@ -2520,7 +2520,7 @@ try {
     apiKey: "",
   });
   const advancedProviderRecommendation = await page.locator(".asr-recommendation").innerText();
-  assert.match(advancedProviderRecommendation, /实际拥有 Key 的服务/, "advanced ASR providers should tell users to choose a provider they can actually authorize");
+  assert.match(advancedProviderRecommendation, /内置样本测试后才会作为可用转写服务/, "advanced ASR providers should explain that untested providers are not enabled");
   assert.doesNotMatch(advancedProviderRecommendation, /默认百炼 ASR/, "ASR recovery copy should not recommend a provider the user may not have a key for");
   await page.getByLabel("转写服务提供方").selectOption({ label: "自定义 HTTP 转写端点" });
   await page.evaluate(() => {

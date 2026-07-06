@@ -513,6 +513,42 @@ try {
     /缺少 ASR 模型名称/,
   );
 
+  const previousAsrFetchTimeout = process.env.ECHO_ASR_FETCH_TIMEOUT_MS;
+  process.env.ECHO_ASR_FETCH_TIMEOUT_MS = "10";
+  globalThis.fetch = async (url, options = {}) => {
+    assert.equal(url, "https://asr-timeout.example.test/v1/audio/transcriptions");
+    return new Promise((resolve, reject) => {
+      options.signal?.addEventListener("abort", () => {
+        reject(options.signal.reason || new Error("aborted"));
+      }, { once: true });
+    });
+  };
+  await assert.rejects(
+    () => transcribeWithNvidia({
+      provider: {
+        transport: "nvidia-http",
+        endpoint: "https://asr-timeout.example.test/v1/audio/transcriptions",
+        apiKey: "test-only-token",
+        model: "mock-asr",
+        languageCode: "zh",
+        sendModel: true,
+      },
+      file: tinyWavBuffer(),
+      fileName: "timeout-test.wav",
+    }),
+    (error) => {
+      assert.equal(error.asrStage, "调用 HTTP 转写端点");
+      assert.equal(error.retryable, true);
+      assert.match(error.message, /超时/);
+      return true;
+    },
+  );
+  if (previousAsrFetchTimeout === undefined) {
+    delete process.env.ECHO_ASR_FETCH_TIMEOUT_MS;
+  } else {
+    process.env.ECHO_ASR_FETCH_TIMEOUT_MS = previousAsrFetchTimeout;
+  }
+
   console.log("asr api tests passed");
 } finally {
   globalThis.fetch = originalFetch;

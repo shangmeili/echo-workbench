@@ -12,6 +12,7 @@ const ASR_ENV_KEY_NAMES = ["ASR_API_KEY", "DASHSCOPE_API_KEY", "GROQ_API_KEY", "
 const WORKSPACE_CONFIG_FILE = "workspace.local.json";
 const LEGACY_WORKSPACE_CONFIG_FILE = ".echo-workspace.local.json";
 const MEDIA_STREAM_RANGE_CHUNK_SIZE = 4 * 1024 * 1024;
+const DEFAULT_ASR_FETCH_TIMEOUT_MS = 120_000;
 const localEnvValues = {};
 let rivaClientStatusCache = { checkedAt: 0, available: false, error: "尚未检测 NVIDIA Riva SDK。" };
 
@@ -51,6 +52,29 @@ function refreshLocalEnv(mode) {
       continue;
     }
     delete localEnvValues[name];
+  }
+}
+
+function positiveIntegerEnv(name, fallback) {
+  const value = Number(process.env[name]);
+  return Number.isFinite(value) && value > 0 ? value : fallback;
+}
+
+async function fetchWithAsrTimeout(url, options = {}, timeoutMessage = "云端转写请求超时。") {
+  const timeoutMs = positiveIntegerEnv("ECHO_ASR_FETCH_TIMEOUT_MS", DEFAULT_ASR_FETCH_TIMEOUT_MS);
+  const controller = new AbortController();
+  const timer = setTimeout(() => {
+    controller.abort(new Error(timeoutMessage));
+  }, timeoutMs);
+  try {
+    return await fetch(url, { ...options, signal: controller.signal });
+  } catch (error) {
+    if (controller.signal.aborted) {
+      throw new Error(timeoutMessage);
+    }
+    throw error;
+  } finally {
+    clearTimeout(timer);
   }
 }
 
@@ -865,13 +889,13 @@ async function callNvidiaHttpAsr({ apiKey, endpoint, model, languageCode, file, 
     form.append("timestamp_granularities[]", "word");
   }
   form.set("file", new File([file], fileName || "audio.wav"));
-  const response = await fetch(endpoint, {
+  const response = await fetchWithAsrTimeout(endpoint, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${apiKey}`,
     },
     body: form,
-  });
+  }, "HTTP 转写端点请求超时。");
   const text = await response.text();
   let data;
   try {
@@ -991,13 +1015,13 @@ function normalizeDashScopeTranscription(data = {}) {
 
 async function getDashScopeUploadPolicy({ apiKey, baseUrl, model }) {
   const url = `${baseUrl}/uploads?action=getPolicy&model=${encodeURIComponent(model)}`;
-  const response = await fetch(url, {
+  const response = await fetchWithAsrTimeout(url, {
     method: "GET",
     headers: {
       Authorization: `Bearer ${apiKey}`,
       "Content-Type": "application/json",
     },
-  });
+  }, "获取百炼上传凭证超时。");
   const data = await readJsonResponse(response, "获取百炼临时上传策略失败。");
   const policy = data.data || data.output || data;
   if (!policy.upload_host || !policy.upload_dir || !policy.policy || !policy.signature || !policy.oss_access_key_id) {
@@ -1017,10 +1041,10 @@ async function uploadDashScopeFile({ policy, file, fileName }) {
   form.set("key", objectKey);
   form.set("success_action_status", "200");
   form.set("file", new File([file], safeFileName(fileName || "media")));
-  const response = await fetch(policy.upload_host, {
+  const response = await fetchWithAsrTimeout(policy.upload_host, {
     method: "POST",
     body: form,
-  });
+  }, "上传媒体到百炼临时存储超时。");
   if (!response.ok) {
     const text = await response.text();
     throw new Error(text || `上传百炼临时文件失败：${response.status}`);
@@ -1052,7 +1076,7 @@ function buildDashScopeTranscriptionParameters({ model, languageCode }) {
 async function submitDashScopeTranscription({ apiKey, baseUrl, model, ossUrl, languageCode }) {
   const usesSingleFileInput = usesDashScopeSingleFileInput(model);
   const parameters = buildDashScopeTranscriptionParameters({ model, languageCode });
-  const response = await fetch(`${baseUrl}/services/audio/asr/transcription`, {
+  const response = await fetchWithAsrTimeout(`${baseUrl}/services/audio/asr/transcription`, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${apiKey}`,
@@ -1065,7 +1089,7 @@ async function submitDashScopeTranscription({ apiKey, baseUrl, model, ossUrl, la
       input: usesSingleFileInput ? { file_url: ossUrl } : { file_urls: [ossUrl] },
       parameters,
     }),
-  });
+  }, "提交百炼转写任务超时。");
   const data = await readJsonResponse(response, "提交百炼转写任务失败。");
   const taskId = extractDashScopeTaskId(data);
   if (!taskId) throw new Error("百炼转写任务未返回 task_id。");
@@ -1076,14 +1100,14 @@ async function pollDashScopeTask({ apiKey, baseUrl, taskId, timeoutMs = 300_000 
   const startedAt = Date.now();
   let lastData = null;
   while (Date.now() - startedAt < timeoutMs) {
-    const response = await fetch(`${baseUrl}/tasks/${encodeURIComponent(taskId)}`, {
+    const response = await fetchWithAsrTimeout(`${baseUrl}/tasks/${encodeURIComponent(taskId)}`, {
       method: "GET",
       headers: {
         Authorization: `Bearer ${apiKey}`,
         "Content-Type": "application/json",
         "X-DashScope-Async": "enable",
       },
-    });
+    }, "查询百炼转写任务超时。");
     const data = await readJsonResponse(response, "查询百炼转写任务失败。");
     lastData = data;
     const status = extractDashScopeStatus(data);
@@ -1107,7 +1131,7 @@ async function callDashScopeFunAsr({ apiKey, endpoint, model, languageCode, file
   const transcriptionUrl = extractDashScopeTranscriptionUrl(taskData);
   if (!transcriptionUrl) throw new Error("百炼转写任务未返回 transcription_url。");
   const resultData = await withAsrStage("读取百炼转写结果", async () => {
-    const resultResponse = await fetch(transcriptionUrl);
+    const resultResponse = await fetchWithAsrTimeout(transcriptionUrl, {}, "读取百炼转写结果超时。");
     return readJsonResponse(resultResponse, "读取百炼转写结果失败。");
   });
   return normalizeDashScopeTranscription(resultData);

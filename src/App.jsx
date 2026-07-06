@@ -863,6 +863,9 @@ function formatAsrFailureMessage(error) {
   if (error?.name === "AbortError") return "已取消转写。已保留当前媒体和已有校对内容。";
   const raw = String(error?.message || "").trim();
   const stageText = error?.stage ? `${error.stage}失败：` : "";
+  if (isAsrLanguageParameterError(error)) {
+    return `转写未完成：${stageText}当前转写服务拒绝了素材的语言或音频参数，系统已阻止写入空结果并保留当前任务。可直接重试；连续失败时应更换为已验证通过的转写服务。`;
+  }
   if (isTransientAsrConnectionError(error)) {
     return `转写未完成：${stageText}转写服务连接中断，系统已自动重试并保留当前任务。没有生成不完整结果，可以直接再次开始；如果连续失败，请在模型配置中改用可用转写服务。`;
   }
@@ -872,10 +875,10 @@ function formatAsrFailureMessage(error) {
 function formatAsrConfigTestFailure(error) {
   const raw = String(error?.message || "").trim();
   if (isAsrLanguageParameterError(error)) {
-    return "转写服务测试失败：当前端点拒绝了测试样本的语言或音频参数。系统没有保存测试通过状态；请在模型配置中改用支持当前语言和音频格式的转写服务后再测试。";
+    return "转写服务测试失败：当前端点拒绝了测试样本的语言或音频参数。系统没有保存测试通过状态；该服务暂不能作为可用转写服务启用。";
   }
   if (isTransientAsrConnectionError(error)) {
-    return "转写服务测试失败：当前端点连接中断或网络不可达。系统没有保存测试通过状态；请稍后重试，或在模型配置中改用可访问的转写服务。";
+    return "转写服务测试失败：当前端点连接中断或网络不可达。系统没有保存测试通过状态；该服务暂不能作为可用转写服务启用。";
   }
   return raw || "转写服务测试失败：当前配置未返回可用结果。系统没有保存测试通过状态。";
 }
@@ -4437,11 +4440,11 @@ function AsrConfigPanel({ asrProvider, setAsrProvider, serverStatus, refreshServ
   const badgeText = !ready ? "待配置" : !rivaReady ? "依赖缺失" : failed ? "测试失败" : tested ? "已验证" : "已配置";
   const showAsrRecommendation = failed || !usesDashScopeFunAsr || Boolean(keyMismatchWarning);
   const asrRecommendationText = usesRivaGrpc
-    ? "当前使用 NVIDIA Riva gRPC。NVIDIA 有可用的 Whisper Large v3 端点，测试会自动使用 Riva 兼容 WAV 样本；如果仍失败，优先检查 NVIDIA Build Key 权限、Riva SDK 和音频参数。"
+    ? "当前使用 NVIDIA Riva gRPC。测试会使用内置 Riva 兼容样本；测试失败时不会启用该服务。"
     : !usesDashScopeFunAsr
-      ? "当前提供方需要确认端点、模型、Key 和音频格式。请选择你实际拥有 Key 的服务，不需要切换到没有 Key 的提供方。"
+      ? "当前提供方需要通过内置样本测试后才会作为可用转写服务。"
       : failed
-        ? "当前配置测试失败。请先检查 Key、模型、语言和端点是否匹配，再用内置样本复测。"
+        ? "当前配置测试失败，系统不会把它标记为可用转写服务。"
         : "";
 
   useEffect(() => setDraft(asrProvider), [asrProvider]);
