@@ -39,7 +39,7 @@ import {
   Wand2,
   X,
 } from "lucide-react";
-import { asrResultHasTiming, dedupeAdjacentAsrRows, detectTranscriptionQualityIssue, mergeShortAdjacentAsrRows, rowsFromAsrResult } from "./asrRows.js";
+import { asrResultHasTiming, dedupeAdjacentAsrRows, detectTranscriptionQualityIssue, mergeShortAdjacentAsrRows, rowsFromAsrResult, transcriptWeight } from "./asrRows.js";
 import { ASR_CHUNK_SECONDS, isAsrReadyAudioFile, isOpenAICompatibleAsr, shouldDecodeMediaForAsr, shouldSubmitOriginalMediaForAsr } from "./asrInputStrategy.js";
 import { getAsrLanguageCode, getAsrLanguageCompatibilityWarning } from "./asrLanguage.js";
 import { asrProviderPresets, defaultAsrProvider } from "./asrPresets.js";
@@ -731,17 +731,22 @@ function subtitleReadableLength(value) {
   return String(value || "").replace(/\s+/g, "").length;
 }
 
+function subtitleLengthLimit(value) {
+  return /[A-Za-z]/.test(String(value || "")) && /\s/.test(String(value || "")) ? 18 : 42;
+}
+
 function getSubtitleQualityHints(row, nextRow = null) {
   const hints = [];
   const start = Number(row?.start) || 0;
   const end = Number(row?.end) || 0;
   const duration = end - start;
-  const textLength = subtitleReadableLength(row?.text);
+  const text = String(row?.text || "");
+  const textLength = /[A-Za-z]/.test(text) && /\s/.test(text) ? transcriptWeight(text) : subtitleReadableLength(text);
   if (!String(row?.text || "").trim()) hints.push("空文本");
   if (end <= start) hints.push("时间无效");
   if (nextRow && Number(nextRow.start) < end - 0.02) hints.push("时间重叠");
   if (duration > 0 && duration < 0.7) hints.push("时长过短");
-  if (textLength > 42) hints.push("单条过长");
+  if (textLength > subtitleLengthLimit(text)) hints.push("单条过长");
   if (duration > 0 && textLength / duration > 18) hints.push("阅读过快");
   return hints;
 }

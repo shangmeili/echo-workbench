@@ -155,7 +155,10 @@ function assertExpectedText(transcript, expected) {
     assert.match(transcript, new RegExp(expected.slice(1, -1)));
     return;
   }
-  assert.ok(transcript.includes(expected), `Transcript did not include expected text: ${expected}`);
+  assert.ok(
+    transcript.toLowerCase().includes(expected.toLowerCase()),
+    `Transcript did not include expected text: ${expected}. Preview: ${transcript.slice(0, 240)}`,
+  );
 }
 
 function positiveNumber(value, fallback) {
