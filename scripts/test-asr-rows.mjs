@@ -85,12 +85,52 @@ for (let index = 1; index < longSegmentRows.length; index += 1) {
 }
 assert.equal(longSegmentRows.at(-1).end, 18);
 
+const coarseSegmentRows = rowsFromAsrResult({
+  segments: [
+    {
+      start: 0,
+      end: 60,
+      text: "echo workbench transcription test. This is a stable audio transcription sample.",
+    },
+  ],
+}, 60);
+assert.ok(coarseSegmentRows.length >= 2);
+assert.ok(coarseSegmentRows.at(-1).end < 12, `coarse ASR segment timing should be repaired for short speech, got ${coarseSegmentRows.at(-1).end}`);
+
+const realisticSegmentRows = rowsFromAsrResult({
+  segments: [
+    {
+      start: 0,
+      end: 6,
+      text: "echo workbench transcription test. This is a stable audio transcription sample.",
+    },
+  ],
+}, 6);
+assert.equal(realisticSegmentRows.at(-1).end, 6);
+
+const millisecondSegmentRows = rowsFromAsrResult({
+  segments: [
+    {
+      start: 0,
+      end: 60000,
+      text: "这是一段较长的毫秒级时间戳结果，需要优先按真实媒体时长缩放。",
+    },
+  ],
+}, 60);
+assert.equal(millisecondSegmentRows.at(-1).end, 60);
+
 const textRows = rowsFromAsrResult({ transcript: "第一句没有时间戳。第二句会按时长分配。" }, 12);
 
 assert.equal(textRows.length, 2);
 assert.equal(textRows[0].start, 0);
-assert.equal(textRows[1].end, 12);
+assert.ok(textRows[1].end < 8, `untimed short text should not be stretched to the full media duration, got ${textRows[1].end}`);
 assert.deepEqual(textRows.map((row) => row.text), ["第一句没有时间戳。", "第二句会按时长分配。"]);
+
+const shortEnglishTextRows = rowsFromAsrResult({
+  text: "echo workbench transcription test. This is a stable audio transcription sample.",
+}, 60);
+assert.ok(shortEnglishTextRows.length >= 2);
+assert.ok(shortEnglishTextRows.at(-1).end < 12, `short untimed English ASR should use speech-length timing instead of a 60s media fallback, got ${shortEnglishTextRows.at(-1).end}`);
 
 const realStyleRows = rowsFromAsrResult({ text: "大家好,欢迎使用回响工作台,今天测试音频转写功能。" }, 8);
 assert.deepEqual(realStyleRows.map((row) => row.text), ["大家好，欢迎使用回响工作台，", "今天测试音频转写功能。"]);

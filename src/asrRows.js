@@ -260,6 +260,66 @@ function maxMergedUnits(text) {
   return isLatinText(text) ? 10 : 16;
 }
 
+function estimateSpeechDurationForText(text) {
+  const clean = normalizeAsrText(text);
+  if (!clean) return 0;
+  const units = transcriptWeight(clean);
+  const secondsPerUnit = isLatinText(clean) ? 0.42 : 0.24;
+  return Math.max(1.1, units * secondsPerUnit);
+}
+
+function resolveUntimedTranscriptDuration(sentences, fallbackDuration = 0) {
+  const estimated = sentences.reduce((sum, sentence) => sum + estimateSpeechDurationForText(sentence), 0);
+  const sentenceFloor = Math.max(sentences.length * 1.2, 1.5);
+  const estimatedDuration = Math.max(estimated, sentenceFloor);
+  const mediaDuration = Number(fallbackDuration) > 0 ? Number(fallbackDuration) : 0;
+  if (!mediaDuration) return estimatedDuration;
+  if (mediaDuration <= estimatedDuration * 1.75) return mediaDuration;
+  return estimatedDuration;
+}
+
+function estimateRowsSpeechDuration(rows) {
+  const validRows = Array.isArray(rows) ? rows.filter((row) => normalizeAsrText(row?.text || "")) : [];
+  if (!validRows.length) return 0;
+  const estimated = validRows.reduce((sum, row) => sum + estimateSpeechDurationForText(row.text), 0);
+  return Math.max(estimated, validRows.length * 1.2, 1.5);
+}
+
+function scaleRowsToDuration(rows, targetDuration) {
+  const maxEnd = Math.max(...rows.map((row) => finiteNumber(row?.end, 0)), 0);
+  if (!rows.length || !maxEnd || !Number.isFinite(targetDuration) || targetDuration <= 0) return rows;
+  const factor = targetDuration / maxEnd;
+  return rows.map((row, index) => {
+    const start = Math.max(0, finiteNumber(row.start, 0) * factor);
+    const rawEnd = Math.max(start + 0.35, finiteNumber(row.end, start + 0.35) * factor);
+    return {
+      ...row,
+      start,
+      end: index === rows.length - 1 ? Math.max(start + 0.5, targetDuration) : rawEnd,
+    };
+  });
+}
+
+function repairCoarseSegmentTiming(rows, fallbackDuration = 0) {
+  const validRows = Array.isArray(rows) ? rows.filter((row) => normalizeAsrText(row?.text || "")) : [];
+  if (!validRows.length) return [];
+  const maxEnd = Math.max(...validRows.map((row) => finiteNumber(row.end, 0)), 0);
+  if (!maxEnd) return validRows;
+  const estimatedDuration = estimateRowsSpeechDuration(validRows);
+  const mediaDuration = Number(fallbackDuration) > 0 ? Number(fallbackDuration) : 0;
+
+  if (mediaDuration && maxEnd > mediaDuration * 20) {
+    return scaleRowsToDuration(validRows, mediaDuration);
+  }
+  if (mediaDuration && maxEnd > mediaDuration * 1.75 && mediaDuration <= estimatedDuration * 2.2) {
+    return scaleRowsToDuration(validRows, mediaDuration);
+  }
+  if (estimatedDuration && maxEnd > estimatedDuration * 2.5) {
+    return scaleRowsToDuration(validRows, estimatedDuration);
+  }
+  return validRows;
+}
+
 function isShortFragment(row) {
   const text = normalizeAsrText(row?.text || "");
   if (!text || isSentenceClosed(text)) return false;
@@ -320,14 +380,16 @@ export function mergeShortAdjacentAsrRows(rows, options = {}) {
 
 export function rowsFromAsrResult(result, fallbackDuration = 0) {
   if (Array.isArray(result?.segments) && result.segments.length) {
-    return result.segments.flatMap((segment, index) => rowsFromSegment(segment, index));
+    const rows = result.segments.flatMap((segment, index) => rowsFromSegment(segment, index));
+    return repairCoarseSegmentTiming(rows, fallbackDuration);
   }
   if (Array.isArray(result?.words) && result.words.length) {
     const rows = groupWordsToRows(result.words);
     if (rows.length) return rows;
   }
   const sentences = splitTranscriptIntoSentences(result?.text || result?.transcript || "");
-  const duration = Number(fallbackDuration) > 0 ? Number(fallbackDuration) : Math.max(sentences.length * 4, 3);
+  if (!sentences.length) return [];
+  const duration = resolveUntimedTranscriptDuration(sentences, fallbackDuration);
   const totalWeight = sentences.reduce((sum, item) => sum + transcriptWeight(item), 0) || sentences.length || 1;
   const minimumSegmentDuration = Math.min(1.2, Math.max(0.45, (duration / Math.max(sentences.length, 1)) * 0.55));
   let cursor = 0;

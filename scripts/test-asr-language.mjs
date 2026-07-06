@@ -18,6 +18,10 @@ assert.doesNotMatch(
   getAsrLanguageCompatibilityWarning({ model: "parakeet-ctc-1.1b-asr" }, "中文"),
   /工作台选择|匹配的源语言|英文素材/,
 );
+assert.doesNotMatch(
+  getAsrLanguageCompatibilityWarning({ model: "parakeet-ctc-1.1b-asr" }, "中文"),
+  /请.*改用|请.*切换/,
+);
 assert.match(
   getAsrLanguageCompatibilityWarning({ transport: "nvidia-riva-grpc", model: "parakeet-1.1b-rnnt-multilingual-asr" }, "中文"),
   /已阻止提交/,

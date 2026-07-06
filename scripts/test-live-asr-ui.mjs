@@ -117,6 +117,23 @@ async function seedRivaProvider(page) {
   }, NVIDIA_RIVA_PROVIDER);
 }
 
+function parseTimecodeSeconds(value) {
+  const text = String(value || "").trim();
+  const match = text.match(/^(?:(\d{1,2}):)?(\d{1,2}):(\d{2})(?:\.(\d{1,3}))?$/);
+  if (!match) return NaN;
+  const hours = Number(match[1] || 0);
+  const minutes = Number(match[2] || 0);
+  const seconds = Number(match[3] || 0);
+  const milliseconds = Number((match[4] || "0").padEnd(3, "0"));
+  return hours * 3600 + minutes * 60 + seconds + milliseconds / 1000;
+}
+
+function maxSubtitleEndSeconds(text) {
+  const matches = [...String(text || "").matchAll(/(\d{2}:\d{2}(?:\.\d{1,3})?)\s*-\s*(\d{2}:\d{2}(?:\.\d{1,3})?)/g)];
+  if (!matches.length) return 0;
+  return Math.max(...matches.map((match) => parseTimecodeSeconds(match[2])).filter(Number.isFinite));
+}
+
 async function openAudioWorkbench(page, baseUrl, samplePath, sourceLanguage) {
   await page.goto(`${baseUrl}/#workbench/audio-transcribe`, { waitUntil: "networkidle" });
   await page.getByLabel("源语言").selectOption({ label: sourceLanguage });
@@ -139,6 +156,9 @@ async function verifySuccessfulTranscription(page, baseUrl, samplePath) {
   if (errorCard) throw new Error(await page.locator(".transcription-status-card.error").innerText());
   const tableText = await page.locator(".subtitle-table").innerText();
   assert.match(tableText.toLowerCase(), /echo workbench|transcription test|stable audio/);
+  const maxEnd = maxSubtitleEndSeconds(tableText);
+  assert.ok(maxEnd > 0, `transcription table should expose subtitle timecodes: ${tableText}`);
+  assert.ok(maxEnd < 12, `short live-ASR sample should not be stretched across the media fallback duration, got ${maxEnd}s`);
   return tableText.slice(0, 260);
 }
 

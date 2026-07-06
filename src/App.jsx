@@ -869,9 +869,9 @@ function formatAsrFailureMessage(error) {
     return `转写未完成：${stageText}当前转写服务拒绝了素材的语言或音频参数，系统已阻止写入空结果并保留当前任务。可直接重试；连续失败时应更换为已验证通过的转写服务。`;
   }
   if (isTransientAsrConnectionError(error)) {
-    return `转写未完成：${stageText}转写服务连接中断，系统已自动重试并保留当前任务。没有生成不完整结果，可以直接再次开始；如果连续失败，请在模型配置中改用可用转写服务。`;
+    return `转写未完成：${stageText}转写服务连接中断，系统已保留当前任务。没有生成不完整结果，可以直接再次开始；连续失败时该服务会保持未通过状态。`;
   }
-  return `转写未完成：${stageText}${raw || "云端转写服务未返回可用结果"}。已保留当前媒体和已有校对内容，可以直接重试；如果连续失败，请在模型配置中修正转写服务。`;
+  return `转写未完成：${stageText}${raw || "云端转写服务未返回可用结果"}。已保留当前媒体和已有校对内容，可以直接重试；连续失败时该服务会保持未通过状态。`;
 }
 
 function formatAsrConfigTestFailure(error) {
@@ -1914,17 +1914,17 @@ function WorkbenchView({ activeTool, onBackHome, rows, setRows, media, setMedia,
   const asrBlockerDetail = !asrConfigured
     ? `请先配置 ${asrProvider.label || asrProvider.model || "ASR 服务"} 的 API Key。`
     : !asrDependencyOk
-      ? "请安装 Riva 客户端或切换到可用的 HTTP 转写端点。"
+      ? "当前转写依赖未就绪，系统已阻止提交，避免生成空结果。"
       : languageCompatibilityWarning;
   const cloudTranscriptionNotice = !asrConfigured
     ? `转写服务未配置：请在模型配置中填写 ${asrProvider.label || asrProvider.model || "ASR 服务"} 的 API Key。`
     : !asrDependencyOk
-      ? "转写服务依赖未就绪：请安装 Riva 客户端或切换 HTTP 端点。"
+      ? "转写服务依赖未就绪：系统已阻止提交，避免生成空结果。"
       : `转写服务：${asrProvider.label || asrProvider.model || "ASR 服务"}`;
   const asrSetupNote = !asrConfigured
     ? "当前不能开始转写。请先完成转写服务配置，再上传媒体生成可编辑文本。"
     : !asrDependencyOk
-      ? "当前转写服务依赖未就绪。请在模型配置中修正后再开始转写。"
+      ? "当前转写服务依赖未就绪，工作台会阻止提交，避免生成空结果。"
       : languageCompatibilityWarning || (sourceLanguage === "自动识别"
         ? "为提高转写稳定性，建议在开始前明确选择源语言。"
           : usesDashScopeFunAsr
