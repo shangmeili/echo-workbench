@@ -26,10 +26,11 @@ assert.doesNotMatch(appSource, /文本模型待验证/, "configured text model s
 assert.match(appSource, /文本模型已配置/, "configured but untested text model state should be worded as configured");
 assert.doesNotMatch(appSource, /转写已验|文本已配|转写已配/, "result-state model badges should avoid abbreviated status labels");
 
-assert.match(readme, /MiniMax-M3 当前在本项目中用于转写\/字幕文本后的清理、摘要和跨语言翻译，不作为 ASR 转写模型。/);
-assert.match(readme, /默认百炼 Fun-ASR 会直接提交原始音视频/);
+assert.match(readme, /MiniMax-M3 在本项目中用于文本处理，不作为 ASR 转写模型。/);
+assert.match(readme, /默认按百炼 Fun-ASR 中国区接口提交原始音视频/);
 assert.match(readme, /阿里云百炼 Qwen3-ASR 文件转写/);
-assert.match(readme, /选择 5-15 秒清晰语音样本后再测试/);
+assert.match(readme, /NVIDIA Whisper Large v3 托管 Riva gRPC/);
+assert.match(readme, /接入真实服务后，可以用真实样本单独验证/);
 assert.doesNotMatch(readme, /未选择样本时只做最小连通性测试/);
 
 assert.match(indexHtml, /<link rel="icon" type="image\/png" href="\/assets\/brand-icon\.png\?v=[\d-]+" \/>/);

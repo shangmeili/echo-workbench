@@ -33,6 +33,16 @@ export const asrProviderPresets = [
     videoInputMode: "original",
   },
   {
+    label: "NVIDIA Whisper Large v3（托管 Riva gRPC）",
+    transport: "nvidia-riva-grpc",
+    model: "whisper-large-v3",
+    functionId: "b702f636-f60c-4a3d-a6f4-f3568c13bd7d",
+    endpoint: "grpc.nvcf.nvidia.com:443",
+    languageCode: "multi",
+    sendModel: false,
+    videoInputMode: "extract",
+  },
+  {
     label: "OpenAI Whisper API",
     transport: "nvidia-http",
     model: "whisper-1",

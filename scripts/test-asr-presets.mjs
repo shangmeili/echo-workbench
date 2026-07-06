@@ -26,6 +26,15 @@ assert.equal(dashScopeQwenFiletrans.model, "qwen3-asr-flash-filetrans");
 assert.equal(dashScopeQwenFiletrans.videoInputMode, "original");
 assert.equal(dashScopeQwenFiletrans.sendModel, false);
 
+const nvidiaWhisperRiva = byLabel.get("NVIDIA Whisper Large v3（托管 Riva gRPC）");
+assert.ok(nvidiaWhisperRiva);
+assert.equal(nvidiaWhisperRiva.transport, "nvidia-riva-grpc");
+assert.equal(nvidiaWhisperRiva.endpoint, "grpc.nvcf.nvidia.com:443");
+assert.equal(nvidiaWhisperRiva.model, "whisper-large-v3");
+assert.equal(nvidiaWhisperRiva.functionId, "b702f636-f60c-4a3d-a6f4-f3568c13bd7d");
+assert.equal(nvidiaWhisperRiva.languageCode, "multi");
+assert.equal(nvidiaWhisperRiva.videoInputMode, "extract");
+
 const openaiWhisper = byLabel.get("OpenAI Whisper API");
 assert.ok(openaiWhisper);
 assert.equal(openaiWhisper.endpoint, "https://api.openai.com/v1/audio/transcriptions");

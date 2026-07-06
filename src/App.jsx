@@ -240,6 +240,7 @@ function ensureAsrProvider(provider) {
   if (!provider) return defaultAsrProvider;
   const next = { ...defaultAsrProvider, ...provider };
   const knownPreset = asrProviderPresets.some((item) => item.label === next.label);
+  const hostedWhisperPreset = asrProviderPresets.find((item) => item.label === "NVIDIA Whisper Large v3（托管 Riva gRPC）");
   const emptyLegacyHttpConfig = next.transport === "nvidia-http"
     && !String(next.endpoint || "").trim()
     && /待配置 HTTP|自定义 HTTP transcription|自定义 HTTP 转写端点|NVIDIA NIM HTTP/.test(next.label || "");
@@ -255,6 +256,14 @@ function ensureAsrProvider(provider) {
     next.sendModel = defaultAsrProvider.sendModel;
     next.apiKey = apiKey;
     next.lastTest = null;
+  } else if (
+    hostedWhisperPreset &&
+    next.transport === "nvidia-riva-grpc" &&
+    (/NVIDIA Whisper Large v3/.test(next.label || "") || next.model === "whisper-large-v3")
+  ) {
+    const apiKey = next.apiKey || "";
+    Object.assign(next, hostedWhisperPreset, { apiKey });
+    next.lastTest = null;
   } else if (next.label === "NVIDIA Parakeet ASR（托管 Riva gRPC）") {
     next.label = "自定义 NVIDIA Riva gRPC";
   } else if (next.label === "NVIDIA Canary ASR/AST（托管 Riva gRPC）") {
@@ -267,8 +276,10 @@ function ensureAsrProvider(provider) {
     next.label = next.sendModel === false ? "NVIDIA NIM HTTP（自部署/远程）" : "自定义 HTTP 转写端点";
   } else if (!knownPreset && next.transport === "dashscope-funasr") {
     next.label = "阿里云百炼 Fun-ASR（中文/多语言）";
-  } else if (next.label === "NVIDIA Whisper Large v3（多语言转写）") {
-    next.label = next.transport === "nvidia-riva-grpc" ? "自定义 NVIDIA Riva gRPC" : defaultAsrProvider.label;
+  } else if (hostedWhisperPreset && next.label === "NVIDIA Whisper Large v3（多语言转写）") {
+    const apiKey = next.apiKey || "";
+    Object.assign(next, hostedWhisperPreset, { apiKey });
+    next.lastTest = null;
   } else if (next.label === "NVIDIA Whisper Large v3（HTTP，无本地 SDK）") {
     next.label = defaultAsrProvider.label;
   }

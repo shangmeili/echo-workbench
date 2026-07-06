@@ -60,6 +60,7 @@ Echo Workbench does not bundle a local Whisper model or depend on local ffmpeg. 
 
 - 阿里云百炼 Fun-ASR
 - 阿里云百炼 Qwen3-ASR 文件转写
+- NVIDIA Whisper Large v3 托管 Riva gRPC
 - OpenAI Whisper API
 - Groq Whisper
 - OpenAI-compatible audio transcription endpoint

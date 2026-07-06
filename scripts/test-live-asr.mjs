@@ -17,9 +17,10 @@ function usage() {
     "  --file <path>          Required. Real audio/video sample to transcribe.",
     "  --expect <text>        Optional. Text or regex that should appear in transcript.",
     "  --language <code>      Optional. ASR language code. Default: zh.",
-    "  --transport <name>     Optional. dashscope-funasr | nvidia-http. Default: dashscope-funasr.",
+    "  --transport <name>     Optional. dashscope-funasr | nvidia-http | nvidia-riva-grpc. Default: dashscope-funasr.",
     "  --endpoint <url>       Optional. ASR endpoint. Default: DashScope China endpoint.",
     "  --model <name>         Optional. ASR model. Default: fun-asr.",
+    "  --function-id <id>     Optional. NVIDIA hosted Riva function id for nvidia-riva-grpc.",
     "  --duration <seconds>   Optional. Media duration for fallback time-axis checks.",
     "  --min-rows <number>    Optional. Minimum editable rows after normalization. Default: 1.",
     "  --min-chars <number>   Optional. Minimum transcript weight. Default: 1.",
@@ -38,6 +39,7 @@ function parseArgs(argv) {
     transport: "dashscope-funasr",
     endpoint: "https://dashscope.aliyuncs.com/api/v1",
     model: "fun-asr",
+    "function-id": "",
     duration: "0",
     "min-rows": "1",
     "min-chars": "1",
@@ -239,13 +241,17 @@ try {
   const form = new FormData();
   form.set("file", new File([fileBuffer], basename(args.file), { type: contentTypeForFile(args.file) }));
   form.set("provider", JSON.stringify({
-    label: args.transport === "dashscope-funasr" ? "阿里云百炼 Fun-ASR（中文/多语言）" : "Live ASR HTTP",
+    label: args.transport === "dashscope-funasr"
+      ? "阿里云百炼 Fun-ASR（中文/多语言）"
+      : args.transport === "nvidia-riva-grpc"
+        ? "NVIDIA hosted Riva gRPC"
+        : "Live ASR HTTP",
     transport: args.transport,
     model: args.model,
-    functionId: "",
+    functionId: args["function-id"],
     endpoint: args.endpoint,
     languageCode: args.language,
-    sendModel: args.transport !== "dashscope-funasr",
+    sendModel: args.transport === "nvidia-http",
     videoInputMode: args.transport === "dashscope-funasr" ? "original" : "extract",
     apiKey,
   }));
