@@ -133,7 +133,9 @@ try {
   const rivaStartButton = page.getByRole("button", { name: /开始转写/ }).first();
   await rivaStartButton.waitFor({ state: "visible" });
   assert.equal(await rivaStartButton.isEnabled(), false, "restored Chinese-source video should not allow the English-first hosted Riva path");
-  assert.match(await page.locator(".action-panel").innerText(), /模型与源语言不匹配/);
+  const blockedRivaPanelText = await page.locator(".action-panel").innerText();
+  assert.match(blockedRivaPanelText, /模型与源语言不匹配/);
+  assert.equal((blockedRivaPanelText.match(/当前 NVIDIA 托管 Riva 预设/g) || []).length, 1, "Riva language blocker should not duplicate the same explanation");
 
   await createWorkspaceProject(baseUrl, "restore_riva_english_video_project", "restore-riva-english-video.mp4", { sourceLanguage: "英文" });
   await page.goto(`${baseUrl}/#workbench/video-transcribe/restore_riva_english_video_project`, { waitUntil: "networkidle" });

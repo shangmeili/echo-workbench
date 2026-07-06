@@ -3581,7 +3581,7 @@ ${JSON.stringify(chunk.map((row) => ({ id: row.id, start: row.start, end: row.en
                 {asrSetupNote}
               </div>
             )}
-            {!showAsrQualityNote && languageCompatibilityWarning && (
+            {!asrBlocked && !showAsrQualityNote && languageCompatibilityWarning && (
               <div className="quality-note">
                 {languageCompatibilityWarning}
               </div>
