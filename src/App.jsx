@@ -1719,7 +1719,9 @@ function WorkbenchView({ activeTool, onBackHome, rows, setRows, media, setMedia,
     !rows.length &&
     (media.asrAudio?.file || (!usesDashScopeFunAsr && asrProvider.videoInputMode !== "original"))
   );
-  const canStartTranscription = Boolean(workspaceReady && hasTranscriptionInput && transcriptionReady);
+  const languageCompatibilityWarning = !isSubtitleFileFlow ? getAsrLanguageCompatibilityWarning(asrProvider, sourceLanguage) : "";
+  const asrLanguageCompatible = !languageCompatibilityWarning;
+  const canStartTranscription = Boolean(workspaceReady && hasTranscriptionInput && transcriptionReady && asrLanguageCompatible);
   const hasMediaPlayback = Boolean(media?.url);
   const showMediaPanel = Boolean(!rows.length || hasMediaPlayback || isSubtitleFileFlow);
   const startTranscriptionHint = !workspaceReady
@@ -1745,12 +1747,13 @@ function WorkbenchView({ activeTool, onBackHome, rows, setRows, media, setMedia,
         : mediaNeedsBrowserDecode
           ? "先转换并增强音频，再调用云端转写服务"
           : `使用 ${asrProvider.model || "云端 ASR"} 生成可编辑文本`;
-  const languageCompatibilityWarning = !isSubtitleFileFlow ? getAsrLanguageCompatibilityWarning(asrProvider, sourceLanguage) : "";
-  const asrBlocked = !asrConfigured || !asrDependencyOk;
-  const asrBlockerTitle = !asrConfigured ? "转写服务未配置" : "转写依赖未就绪";
+  const asrBlocked = !asrConfigured || !asrDependencyOk || !asrLanguageCompatible;
+  const asrBlockerTitle = !asrConfigured ? "转写服务未配置" : !asrDependencyOk ? "转写依赖未就绪" : "模型与源语言不匹配";
   const asrBlockerDetail = !asrConfigured
     ? `请先配置 ${asrProvider.label || asrProvider.model || "ASR 服务"} 的 API Key。`
-    : "请安装 Riva 客户端或切换到可用的 HTTP 转写端点。";
+    : !asrDependencyOk
+      ? "请安装 Riva 客户端或切换到可用的 HTTP 转写端点。"
+      : languageCompatibilityWarning;
   const cloudTranscriptionNotice = !asrConfigured
     ? `转写服务未配置：请在模型配置中填写 ${asrProvider.label || asrProvider.model || "ASR 服务"} 的 API Key。`
     : !asrDependencyOk
@@ -2442,6 +2445,13 @@ ${rawText}`;
 
   const startTranscription = async () => {
     if (!workspaceReady || !hasTranscriptionInput || !transcriptionReady || busy === "asr") return;
+    const compatibilityMessage = getAsrLanguageCompatibilityWarning(asrProvider, sourceLanguage);
+    if (compatibilityMessage) {
+      const errorMessage = `转写未开始：${compatibilityMessage}`;
+      setMessage(errorMessage);
+      setTranscriptionStatus({ state: "error", message: errorMessage });
+      return;
+    }
     const abortController = new AbortController();
     asrAbortRef.current = abortController;
     setBusy("asr");
@@ -4431,7 +4441,8 @@ function AsrConfigPanel({ asrProvider, setAsrProvider, serverStatus, refreshServ
       }
       const testFile = testSample || await loadBuiltInTestSample();
       if (!testSample) setTestSample(testFile);
-      const data = await callAsr(draft, testFile, draft.languageCode || "multi");
+      const testLanguageCode = usesRivaGrpc ? "en-US" : draft.languageCode || "multi";
+      const data = await callAsr(draft, testFile, testLanguageCode);
       const transcript = String(data?.text || data?.transcript || data?.segments?.map?.((item) => item.text).filter(Boolean).join(" ") || "").trim();
       markAsrTest({ ok: true, message: "转写样本已返回结果。", at: Date.now() });
       setResult(`测试样本已提交，配置尚未保存。${transcript ? `识别片段：${transcript.slice(0, 180)}` : "接口已响应，但没有返回可读文本；请换一段清晰语音样本或检查模型。"}`);

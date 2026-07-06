@@ -21,12 +21,16 @@ const ENGLISH_ONLY_MODELS = new Set([
 ]);
 
 const HOSTED_RIVA_ENGLISH_PREFERRED_MODELS = new Set([
+  "whisper-large-v3",
   "parakeet-1.1b-rnnt-multilingual-asr",
   "canary-1b-asr",
 ]);
 
 export function getAsrLanguageCode(asrProvider = {}, sourceLanguage = "") {
   if (!sourceLanguage || sourceLanguage === "自动识别") return asrProvider.languageCode || "multi";
+  if (asrProvider.transport === "nvidia-riva-grpc" && sourceLanguage === "英文") {
+    return "en-US";
+  }
   if (ENGLISH_ONLY_MODELS.has(asrProvider.model) && sourceLanguage !== "英文") {
     return asrProvider.languageCode || "en-US";
   }
@@ -45,7 +49,7 @@ export function getAsrLanguageCompatibilityWarning(asrProvider = {}, sourceLangu
     return "当前转写模型偏英文；中文、日文、韩文或西班牙文素材建议切换到明确支持对应语言的 HTTP 转写端点。";
   }
   if (asrProvider.transport === "nvidia-riva-grpc" && HOSTED_RIVA_ENGLISH_PREFERRED_MODELS.has(asrProvider.model) && sourceLanguage !== "英文") {
-    return "NVIDIA 托管 Riva 预设已验证为英文优先；中文素材建议使用支持中文的 HTTP audio transcription 端点。";
+    return "当前 NVIDIA 托管 Riva 预设仅作为英文素材的稳定转写路径。如果素材是英文，请选择英文源语言；非英文素材请切换到明确支持该语言的 ASR 服务。";
   }
   return "";
 }

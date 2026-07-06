@@ -17,7 +17,8 @@ async function waitForServer(baseUrl, timeoutMs = 30_000) {
   throw new Error(`server did not start: ${baseUrl}`);
 }
 
-async function createWorkspaceProject(baseUrl, id = "restore_asr_project", name = "restore-asr-video.mp4") {
+async function createWorkspaceProject(baseUrl, id = "restore_asr_project", name = "restore-asr-video.mp4", options = {}) {
+  const sourceLanguage = options.sourceLanguage || "中文";
   const project = {
     id,
     recent: {
@@ -32,7 +33,7 @@ async function createWorkspaceProject(baseUrl, id = "restore_asr_project", name 
     },
     tool: "video-transcribe",
     rows: [],
-    workspaceState: { sourceLanguage: "中文", targetLanguage: "英文", exportMode: "source", draft: "", transcriptionContext: "" },
+    workspaceState: { sourceLanguage, targetLanguage: "英文", exportMode: "source", draft: "", transcriptionContext: "" },
     media: { name, type: "video/mp4", size: 128, duration: 8 },
     asrAudio: null,
     updatedAt: Date.now(),
@@ -131,7 +132,15 @@ try {
   await page.waitForFunction(() => document.querySelector(".workspace-title strong")?.textContent?.includes("视频转写"));
   const rivaStartButton = page.getByRole("button", { name: /开始转写/ }).first();
   await rivaStartButton.waitFor({ state: "visible" });
-  assert.equal(await rivaStartButton.isEnabled(), true, "restored video should allow Riva transcription because server prepares compatible audio");
+  assert.equal(await rivaStartButton.isEnabled(), false, "restored Chinese-source video should not allow the English-first hosted Riva path");
+  assert.match(await page.locator(".action-panel").innerText(), /模型与源语言不匹配/);
+
+  await createWorkspaceProject(baseUrl, "restore_riva_english_video_project", "restore-riva-english-video.mp4", { sourceLanguage: "英文" });
+  await page.goto(`${baseUrl}/#workbench/video-transcribe/restore_riva_english_video_project`, { waitUntil: "networkidle" });
+  await page.waitForFunction(() => document.querySelector(".workspace-title strong")?.textContent?.includes("视频转写"));
+  const rivaEnglishStartButton = page.getByRole("button", { name: /开始转写/ }).first();
+  await rivaEnglishStartButton.waitFor({ state: "visible" });
+  assert.equal(await rivaEnglishStartButton.isEnabled(), true, "restored English-source video should allow Riva transcription because server prepares compatible audio");
 
   await createWorkspaceProject(baseUrl, "restore_browser_extract_project", "restore-browser-extract.mp4");
   let browserExtractAsrCalled = false;
