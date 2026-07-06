@@ -786,6 +786,12 @@ function asrReady(asrProvider, serverStatus = defaultServerStatus) {
   return Boolean((asrProvider?.apiKey || hasServerAsrKeyForProvider(asrProvider, serverStatus)) && asrTargetConfigured(asrProvider) && asrDependencyReady(asrProvider, serverStatus));
 }
 
+function workspaceMediaCanUseAsAsrInput(mediaLike, asrProvider, duration = 0) {
+  if (!mediaLike?.workspaceUrl) return false;
+  if (shouldSubmitOriginalMediaForAsr(mediaLike, asrProvider, duration)) return true;
+  return Boolean(mediaLike.type?.startsWith("audio") && !shouldDecodeMediaForAsr(mediaLike, asrProvider, duration));
+}
+
 function isErrorMessage(value) {
   const text = String(value || "").toLowerCase();
   return ["失败", "缺少", "没有", "未检测", "未完成", "无法", "error", "fail"].some((term) => text.includes(term.toLowerCase()));
@@ -912,6 +918,22 @@ async function callAsr(asrProvider, file, languageCode, options = {}) {
     method: "POST",
     body: form,
     signal: options.signal,
+  });
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || "云端转写失败");
+  return data;
+}
+
+async function callWorkspaceAsr(asrProvider, workspaceSource, languageCode, options = {}) {
+  const response = await fetch("/api/asr/transcribe-workspace", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    signal: options.signal,
+    body: JSON.stringify({
+      provider: { ...asrProvider, languageCode },
+      projectId: workspaceSource.projectId || workspaceSource.workspaceProjectId,
+      field: workspaceSource.field || workspaceSource.workspaceField,
+    }),
   });
   const data = await response.json();
   if (!response.ok) throw new Error(data.error || "云端转写失败");
@@ -1140,7 +1162,7 @@ function RecentProjects({ recents, onViewAll, onOpenRecent, workspaceStatus, onO
             <div>
               <strong>{item.name}</strong>
               <span>{projectDisplayMeta(item)} · {item.time}</span>
-              <small className={item.status === "处理中" ? "blue" : "green"}>{item.status} · 有本地副本</small>
+              <small className={item.status === "处理中" ? "blue" : "green"}>{item.status} · {projectRecoverableLabel(item)}</small>
             </div>
             <em>继续处理 <ChevronRight size={16} /></em>
           </button>
@@ -1634,8 +1656,12 @@ function WorkbenchView({ activeTool, onBackHome, rows, setRows, media, setMedia,
   const asrDependencyOk = asrDependencyReady(asrProvider, serverStatus);
   const transcriptionReady = asrReady(asrProvider, serverStatus);
   const mediaType = media?.type || media?.file?.type || "";
-  const videoHasAudioTrack = Boolean(mediaType.startsWith("video") && media.asrAudio?.file);
-  const transcriptionFile = media?.asrAudio?.file || media?.file;
+  const asrMedia = media?.asrAudio || media;
+  const hasAsrFile = Boolean(media?.asrAudio?.file || media?.file);
+  const workspaceSourceReady = Boolean(!hasAsrFile && workspaceMediaCanUseAsAsrInput(asrMedia, asrProvider, media?.asrAudio?.duration || media?.duration || 0));
+  const hasTranscriptionInput = Boolean(hasAsrFile || workspaceSourceReady);
+  const videoHasAudioTrack = Boolean(mediaType.startsWith("video") && (media?.asrAudio?.file || media?.asrAudio?.workspaceUrl));
+  const transcriptionFile = media?.asrAudio?.file || media?.file || asrMedia;
   const transcriptionDuration = media?.asrAudio?.duration || media?.duration || 0;
   const mediaSubmitsOriginal = shouldSubmitOriginalMediaForAsr(transcriptionFile, asrProvider, transcriptionDuration);
   const mediaNeedsBrowserDecode = shouldDecodeMediaForAsr(transcriptionFile, asrProvider, transcriptionDuration);
@@ -1645,13 +1671,15 @@ function WorkbenchView({ activeTool, onBackHome, rows, setRows, media, setMedia,
     !rows.length &&
     (media.asrAudio?.file || (!usesDashScopeFunAsr && asrProvider.videoInputMode !== "original"))
   );
-  const canStartTranscription = Boolean(workspaceReady && media?.file && transcriptionReady);
+  const canStartTranscription = Boolean(workspaceReady && hasTranscriptionInput && transcriptionReady);
   const hasMediaPlayback = Boolean(media?.url);
   const showMediaPanel = Boolean(!rows.length || hasMediaPlayback || isSubtitleFileFlow);
   const startTranscriptionHint = !workspaceReady
     ? "需先配置本地工作区"
-    : !media?.file
+    : !media?.url && !media?.file
       ? missingMediaHint
+    : !hasTranscriptionInput
+      ? "本地副本可预览，但当前转写服务需要浏览器重新读取原始文件。请切换百炼 ASR，或重新上传媒体。"
     : !asrConfigured
       ? "需配置云端转写服务"
       : !asrDependencyOk
@@ -2365,16 +2393,38 @@ ${rawText}`;
   };
 
   const startTranscription = async () => {
-    if (!workspaceReady || !media?.file || !transcriptionReady || busy === "asr") return;
+    if (!workspaceReady || !hasTranscriptionInput || !transcriptionReady || busy === "asr") return;
     const abortController = new AbortController();
     asrAbortRef.current = abortController;
     setBusy("asr");
     setMessage("");
     try {
-      const asrSource = media.asrAudio?.file
-        ? { file: media.asrAudio.file, duration: media.asrAudio.duration || media.duration || 0, fromAudioTrack: true }
-        : { file: media.file, duration: media.duration || 0, fromAudioTrack: false };
-      const asrInputs = await prepareAsrInputs(asrSource.file, asrSource.duration, setMessage, asrProvider);
+      const usingAudioTrack = Boolean(media?.asrAudio);
+      const asrMediaSource = usingAudioTrack ? media.asrAudio : media;
+      const asrSource = {
+        file: asrMediaSource?.file || null,
+        workspaceUrl: asrMediaSource?.workspaceUrl || "",
+        workspaceField: usingAudioTrack ? "asrAudio" : "media",
+        duration: asrMediaSource?.duration || media?.duration || 0,
+        fromAudioTrack: usingAudioTrack,
+        name: asrMediaSource?.name || media?.name || "media",
+        type: asrMediaSource?.type || media?.type || "",
+      };
+      const asrInputs = asrSource.file
+        ? await prepareAsrInputs(asrSource.file, asrSource.duration, setMessage, asrProvider)
+        : workspaceSourceReady
+          ? [{
+            workspaceProjectId: activeProjectId,
+            workspaceField: asrSource.workspaceField,
+            duration: asrSource.duration,
+            offset: 0,
+            directOriginal: true,
+            workspaceOriginal: true,
+          }]
+          : [];
+      if (!asrInputs.length) {
+        throw new Error("本地副本无法作为当前转写服务的输入。请切换为百炼 ASR，或重新上传媒体文件。");
+      }
       const languageCode = getAsrLanguageCode(asrProvider, sourceLanguage);
       const parsedRows = [];
       const rawResults = [];
@@ -2384,7 +2434,9 @@ ${rawText}`;
           ? `正在调用 ${asrProvider.model || "云端 ASR"} 转写第 ${index + 1}/${asrInputs.length} 段。`
           : `正在调用 ${asrProvider.model || "云端 ASR"} 转写。`);
         throwIfAsrAborted(abortController.signal);
-        const result = await callAsr(asrProvider, input.file, languageCode, { signal: abortController.signal });
+        const result = input.workspaceProjectId
+          ? await callWorkspaceAsr(asrProvider, input, languageCode, { signal: abortController.signal })
+          : await callAsr(asrProvider, input.file, languageCode, { signal: abortController.signal });
         throwIfAsrAborted(abortController.signal);
         rawResults.push(result);
         const normalizedResult = await restoreTextOnlyAsrResult(result, abortController.signal);
@@ -2423,12 +2475,14 @@ ${rawText}`;
       const hasTiming = rawResults.some(asrResultHasTiming);
       const conversionText = asrSource.fromAudioTrack
         ? "已使用备用音频文件进行转写。"
-        : usesDashScopeFunAsr && asrSource.file.type?.startsWith("video")
+        : asrInputs.some((input) => input.workspaceOriginal)
+          ? "已从本地工作区副本提交媒体文件给云端转写服务。"
+        : usesDashScopeFunAsr && asrSource.type?.startsWith("video")
           ? "已直接提交原始视频文件给百炼 ASR。"
         : asrInputs.some((input) => input.directOriginal)
           ? asrInputs.some((input) => input.fallbackFromVideoDecode)
             ? "浏览器无法抽取视频音轨，已改为直接提交原始视频文件给云端转写服务。"
-            : (asrSource.file.type?.startsWith("video") ? "已直接提交原始视频文件给云端转写服务。" : "已直接提交原始音频文件给云端转写服务。")
+            : (asrSource.type?.startsWith("video") ? "已直接提交原始视频文件给云端转写服务。" : "已直接提交原始音频文件给云端转写服务。")
         : asrInputs.some((input) => input.converted)
           ? "已先从媒体中生成 16kHz 单声道 WAV 音频。"
           : "";
@@ -4122,6 +4176,11 @@ function AsrConfigPanel({ asrProvider, setAsrProvider, serverStatus, refreshServ
   const credentialLabel = draft.apiKey ? "浏览器 Key" : hasMatchingServerKey ? "服务端 ASR Key" : "";
   const ready = Boolean(hasCredential && hasTargetAddress && hasRequiredModel);
   const hasTestSample = Boolean(testSample);
+  const keyMismatchWarning = draft.apiKey?.startsWith("nvapi-") && usesDashScopeFunAsr
+    ? "当前 Key 看起来像 NVIDIA Key，但提供方是百炼 ASR。请确认提供方和 Key 来源是否匹配。"
+    : draft.apiKey && asrUsesRivaGrpc(draft) && !draft.apiKey.startsWith("nvapi-")
+      ? "当前 Key 看起来不像 NVIDIA Key，请确认它有当前 Riva / NVCF 端点权限。"
+      : "";
   const tested = draft.lastTest?.ok === true;
   const failed = draft.lastTest?.ok === false;
   const rivaReady = asrDependencyReady(draft, serverStatus);
@@ -4146,7 +4205,7 @@ function AsrConfigPanel({ asrProvider, setAsrProvider, serverStatus, refreshServ
   const asrTestBlockedText = asrTestBlockedParts.length
     ? `测试前需先补齐：${asrTestBlockedParts.join("、")}。`
     : "";
-  const configStateText = dependencyWarning || (ready
+  const configStateText = dependencyWarning || keyMismatchWarning || (ready
     ? usesRivaGrpc
       ? `${credentialLabel} 已可用于音频转写；gRPC 视频流程会先尝试从视频音轨生成音频输入。`
       : usesDashScopeFunAsr
@@ -4205,6 +4264,26 @@ function AsrConfigPanel({ asrProvider, setAsrProvider, serverStatus, refreshServ
       return next;
     });
     setResult("");
+  };
+
+  const useBuiltInTestSample = async () => {
+    setBusy("sample");
+    setResult("");
+    try {
+      const response = await fetch("/api/asr/test-sample");
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        throw new Error(data.error || "生成测试样本失败。");
+      }
+      const blob = await response.blob();
+      const sample = new File([blob], "echo-workbench-test.m4a", { type: blob.type || "audio/mp4", lastModified: Date.now() });
+      setTestSample(sample);
+      setResult("已载入内置测试样本。点击“测试转写服务”会调用真实转写服务验证。");
+    } catch (error) {
+      setResult(error.message || "生成测试样本失败。请手动选择一段清晰语音音频。");
+    } finally {
+      setBusy("");
+    }
   };
 
   const testAsrConnection = async () => {
@@ -4308,7 +4387,7 @@ function AsrConfigPanel({ asrProvider, setAsrProvider, serverStatus, refreshServ
           )}
         </label>
       </div>
-      <div className={`config-state ${ready && !dependencyWarning ? "ok" : "warn"}`}>
+      <div className={`config-state ${ready && !dependencyWarning && !keyMismatchWarning ? "ok" : "warn"}`}>
         {configStateText}
       </div>
       <div className="asr-test-sample">
@@ -4329,6 +4408,10 @@ function AsrConfigPanel({ asrProvider, setAsrProvider, serverStatus, refreshServ
         <button className="secondary" type="button" onClick={() => testSampleInputRef.current?.click()}>
           <Download size={18} />
           {testSample ? "更换样本" : "选择样本"}
+        </button>
+        <button className="secondary" type="button" onClick={useBuiltInTestSample} disabled={busy === "sample"}>
+          {busy === "sample" ? <Loader2 className="spin" size={18} /> : <Sparkles size={18} />}
+          使用测试样本
         </button>
         {testSample && <button className="secondary" type="button" onClick={() => setTestSample(null)}>移除样本</button>}
       </div>
@@ -4580,6 +4663,13 @@ function projectDisplayMeta(item) {
   return meta;
 }
 
+function projectRecoverableLabel(item) {
+  if (item?.rowCount > 0 || item?.recoverableState === "has-results") return `有校对结果${item.rowCount ? ` · ${item.rowCount} 条` : ""}`;
+  if (item?.hasMediaCopy || item?.recoverableState === "media-only") return "有媒体副本";
+  if (item?.hasWorkspaceCopy) return "有本地副本";
+  return "仅有记录";
+}
+
 function ProjectsView({ recents, onOpenRecent, onRenameProject, onDeleteProject, onClearProjects, workspaceStatus, onOpenSettings }) {
   const [confirmDeleteKey, setConfirmDeleteKey] = useState("");
   const [confirmClear, setConfirmClear] = useState(false);
@@ -4773,7 +4863,7 @@ function ProjectsView({ recents, onOpenRecent, onRenameProject, onDeleteProject,
                 <RecentFileChip item={item} />
                 <div className="project-title">
                   <strong>{item.name}</strong>
-                  <span>{projectDisplayMeta(item)}{item.time ? ` · ${item.time}` : ""}</span>
+                  <span>{projectDisplayMeta(item)}{item.time ? ` · ${item.time}` : ""} · {projectRecoverableLabel(item)}</span>
                 </div>
                 <em>{item.status}</em>
                 <span className="project-open">继续处理 <ChevronRight size={16} /></span>
@@ -5397,7 +5487,16 @@ export function App() {
           });
           setWorkspaceStatus((current) => {
             if (!current.configured) return current;
-            const savedRecent = { ...recent, id: savingProjectId, hasWorkspaceCopy: true, updatedAt: Date.now() };
+            const savedRecent = {
+              ...recent,
+              id: savingProjectId,
+              hasWorkspaceCopy: true,
+              hasMediaCopy: Boolean(media),
+              hasAsrAudioCopy: Boolean(media?.asrAudio),
+              rowCount: rows.length,
+              recoverableState: rows.length ? "has-results" : media ? "media-only" : "metadata-only",
+              updatedAt: Date.now(),
+            };
             return {
               ...current,
               projects: mergeRecentProjects([savedRecent], current.projects || []),
@@ -5478,6 +5577,14 @@ export function App() {
       ...(workspaceProject.recent || {}),
       id: projectId,
       hasWorkspaceCopy: true,
+      hasMediaCopy: Boolean(workspaceProject.media?.fileName || workspaceProject.mediaUrl),
+      hasAsrAudioCopy: Boolean(workspaceProject.asrAudio?.fileName || workspaceProject.asrAudioUrl),
+      rowCount: Array.isArray(workspaceProject.rows) ? workspaceProject.rows.length : 0,
+      recoverableState: Array.isArray(workspaceProject.rows) && workspaceProject.rows.length
+        ? "has-results"
+        : workspaceProject.media?.fileName || workspaceProject.mediaUrl
+          ? "media-only"
+          : "metadata-only",
     };
     const tool = workspaceProject.tool || inferRecentTool(recent);
     const feature = featureCards.find((entry) => entry.id === tool) || featureCards[0];

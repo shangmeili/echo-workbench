@@ -197,10 +197,15 @@ async function listWorkspaceProjects(root) {
       const content = await readFile(join(projectsRoot, entry.name, "project.json"), "utf8");
       const record = JSON.parse(content);
       if (record?.recent) {
+        const rowCount = Array.isArray(record.rows) ? record.rows.length : 0;
         projects.push({
           ...record.recent,
           id: record.id,
           hasWorkspaceCopy: true,
+          hasMediaCopy: Boolean(record.media?.fileName),
+          hasAsrAudioCopy: Boolean(record.asrAudio?.fileName),
+          rowCount,
+          recoverableState: rowCount ? "has-results" : record.media?.fileName ? "media-only" : "metadata-only",
           updatedAt: record.updatedAt || 0,
         });
       } else {
@@ -354,6 +359,24 @@ async function loadWorkspaceProject(id) {
   };
 }
 
+async function workspaceProjectFileSource(id, field) {
+  const { root } = await getWorkspaceOrThrow();
+  const safeId = safeProjectId(id);
+  const content = await readFile(join(projectDir(root, safeId), "project.json"), "utf8");
+  const record = JSON.parse(content);
+  const fileRecord = record[field];
+  if (!fileRecord?.fileName) {
+    throw new Error(field === "asrAudio" ? "这个项目没有保存补充音频文件。" : "这个项目没有保存媒体文件。");
+  }
+  const filePath = join(projectDir(root, safeId), fileRecord.fileName);
+  return {
+    filePath,
+    fileName: fileRecord.name || fileRecord.fileName,
+    type: fileRecord.type || "application/octet-stream",
+    record: fileRecord,
+  };
+}
+
 async function deleteWorkspaceProject(id) {
   const { root } = await getWorkspaceOrThrow();
   const safeId = safeProjectId(id);
@@ -392,12 +415,7 @@ function parseByteRange(rangeHeader, fileSize) {
 }
 
 async function streamWorkspaceProjectFile(req, res, id, field) {
-  const { root } = await getWorkspaceOrThrow();
-  const safeId = safeProjectId(id);
-  const record = await loadWorkspaceProject(safeId);
-  const fileRecord = record[field];
-  if (!fileRecord?.fileName) throw new Error(field === "asrAudio" ? "这个项目没有保存补充音频文件。" : "这个项目没有保存媒体文件。");
-  const filePath = join(projectDir(root, safeId), fileRecord.fileName);
+  const { filePath, record: fileRecord } = await workspaceProjectFileSource(id, field);
   const fileStat = await stat(filePath);
   res.setHeader("Content-Type", fileRecord.type || "application/octet-stream");
   res.setHeader("Accept-Ranges", "bytes");
@@ -439,6 +457,24 @@ function readRequestBuffer(req, maxBytes = 220 * 1024 * 1024) {
     });
     req.on("end", () => resolve(Buffer.concat(chunks)));
     req.on("error", reject);
+  });
+}
+
+function generateSpeechSample({ outputPath, text }) {
+  return new Promise((resolve, reject) => {
+    const child = spawn("say", ["-o", outputPath, text], { stdio: ["ignore", "ignore", "pipe"] });
+    let stderr = "";
+    child.stderr.on("data", (chunk) => {
+      stderr += chunk.toString();
+    });
+    child.on("error", (error) => reject(new Error(`无法生成测试语音样本：${error.message}`)));
+    child.on("close", (code) => {
+      if (code !== 0) {
+        reject(new Error(stderr.trim() || "当前系统无法生成测试语音样本，请手动选择一段清晰音频。"));
+        return;
+      }
+      resolve(outputPath);
+    });
   });
 }
 
@@ -1170,6 +1206,54 @@ function registerLocalApi(middlewares, mode) {
           rivaClientAvailable: rivaClientStatus.available,
           rivaClientError: rivaClientStatus.error,
         });
+      });
+
+  middlewares.use("/api/asr/test-sample", async (req, res) => {
+        if (req.method !== "GET") {
+          sendJson(res, 405, { error: "Method not allowed" });
+          return;
+        }
+        let tempDir = "";
+        try {
+          tempDir = await mkdtemp(join(tmpdir(), "echo-asr-test-sample-"));
+          const samplePath = join(tempDir, "echo-workbench-test.m4a");
+          await generateSpeechSample({
+            outputPath: samplePath,
+            text: "Echo workbench transcription test. 回响工作台转写测试。视频智能字幕，音频转写。",
+          });
+          const sample = await readFile(samplePath);
+          res.statusCode = 200;
+          res.setHeader("Content-Type", "audio/mp4");
+          res.setHeader("Content-Disposition", 'attachment; filename="echo-workbench-test.m4a"');
+          res.end(sample);
+        } catch (error) {
+          sendJson(res, 400, { error: error.message || "生成测试样本失败。" });
+        } finally {
+          if (tempDir) {
+            await rm(tempDir, { recursive: true, force: true }).catch(() => {});
+          }
+        }
+      });
+
+  middlewares.use("/api/asr/transcribe-workspace", async (req, res) => {
+        if (req.method !== "POST") {
+          sendJson(res, 405, { error: "Method not allowed" });
+          return;
+        }
+        try {
+          refreshLocalEnv(mode);
+          const body = await readJsonBody(req);
+          const field = body.field === "asrAudio" ? "asrAudio" : "media";
+          const { filePath, fileName } = await workspaceProjectFileSource(body.projectId, field);
+          const result = await transcribeWithNvidia({
+            provider: body.provider || {},
+            file: await readFile(filePath),
+            fileName: fileName || "media",
+          });
+          sendJson(res, 200, result);
+        } catch (error) {
+          sendJson(res, 400, { error: error.message });
+        }
       });
 
   middlewares.use("/api/asr/transcribe", async (req, res) => {
