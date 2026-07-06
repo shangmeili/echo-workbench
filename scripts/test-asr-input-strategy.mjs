@@ -34,5 +34,7 @@ assert.equal(shouldDecodeMediaForAsr(video, nimHttp, 120), true);
 
 assert.equal(shouldSubmitOriginalMediaForAsr(wav, rivaGrpc, 120), false);
 assert.equal(shouldDecodeMediaForAsr(wav, rivaGrpc, 120), false);
+assert.equal(shouldSubmitOriginalMediaForAsr(video, rivaGrpc, 3600), true);
+assert.equal(shouldDecodeMediaForAsr(video, rivaGrpc, 3600), false);
 
 console.log("asr input strategy tests passed");

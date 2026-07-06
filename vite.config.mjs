@@ -478,6 +478,54 @@ function runLocalCommand(command, args, fallbackMessage) {
   });
 }
 
+const RIVA_CHUNK_SECONDS = 180;
+
+function rivaCanReadDirectly(fileName = "") {
+  return /\.(wav|flac)$/i.test(fileName);
+}
+
+function listRivaChunkFiles(tempDir) {
+  return readdir(tempDir)
+    .then((entries) => entries
+      .filter((entry) => /^riva-input-\d+\.wav$/i.test(entry))
+      .sort((left, right) => left.localeCompare(right))
+      .map((entry) => join(tempDir, entry)));
+}
+
+async function prepareRivaAudioInputs({ inputPath, inputName, tempDir }) {
+  if (rivaCanReadDirectly(inputName)) return [{ path: inputPath, offset: 0 }];
+  const segmentPattern = join(tempDir, "riva-input-%03d.wav");
+  await runLocalCommand(
+    "ffmpeg",
+    [
+      "-y",
+      "-hide_banner",
+      "-loglevel",
+      "error",
+      "-i",
+      inputPath,
+      "-vn",
+      "-ac",
+      "1",
+      "-ar",
+      "16000",
+      "-sample_fmt",
+      "s16",
+      "-f",
+      "segment",
+      "-segment_time",
+      String(RIVA_CHUNK_SECONDS),
+      "-reset_timestamps",
+      "1",
+      segmentPattern,
+    ],
+    "无法为 NVIDIA Riva 生成兼容音频。请确认系统可用 ffmpeg，或改传 16kHz 单声道 WAV/FLAC 音频",
+  );
+  const chunks = await listRivaChunkFiles(tempDir);
+  if (!chunks.length) throw new Error("无法从媒体中生成可转写音频。请检查视频是否包含音轨，或改传 WAV/FLAC 音频。");
+  return chunks.map((path, index) => ({ path, offset: index * RIVA_CHUNK_SECONDS }));
+}
+
 async function generateSpeechSample({ outputPath, text, format = "m4a", tempDir = "" }) {
   if (format === "wav") {
     const aiffPath = join(tempDir || tmpdir(), "echo-workbench-test.aiff");
@@ -1035,6 +1083,34 @@ async function callDashScopeFunAsr({ apiKey, endpoint, model, languageCode, file
   return normalizeDashScopeTranscription(resultData);
 }
 
+function offsetRivaTimingItems(items = [], offset = 0) {
+  if (!offset || !Array.isArray(items)) return items || [];
+  return items.map((item) => ({
+    ...item,
+    start: Number(item.start || 0) + offset,
+    end: Number(item.end || 0) + offset,
+  }));
+}
+
+function mergeRivaChunkResults(results = []) {
+  const text = results.map((item) => String(item.result?.text || "").trim()).filter(Boolean).join(" ").trim();
+  const words = results.flatMap((item) => offsetRivaTimingItems(item.result?.words, item.offset));
+  const segments = results
+    .map((item, index) => {
+      const chunkText = String(item.result?.text || "").trim();
+      if (!chunkText) return null;
+      return {
+        start: item.offset,
+        end: item.offset + Math.max(2, Math.min(RIVA_CHUNK_SECONDS, chunkText.split(/\s+/).filter(Boolean).length * 0.45)),
+        text: chunkText,
+        speaker: "未标注",
+        id: `riva-chunk-${index}`,
+      };
+    })
+    .filter(Boolean);
+  return { text, words, segments, provider: "nvidia-riva" };
+}
+
 export async function transcribeWithNvidia({ provider, file, fileName }) {
   const apiKey = resolveNvidiaApiKey(provider);
   if (!apiKey) throw new Error("缺少 ASR API Key。请先在模型配置中填写转写服务 Key。");
@@ -1065,14 +1141,20 @@ export async function transcribeWithNvidia({ provider, file, fileName }) {
   const filePath = join(tempDir, `input${extension}`);
   try {
     await writeFile(filePath, file);
-    return await runPythonAsr({
-      apiKey,
-      filePath,
-      functionId: provider.functionId,
-      endpoint: provider.endpoint,
-      languageCode,
-      translate: Boolean(provider.translate),
-    });
+    const rivaInputs = await prepareRivaAudioInputs({ inputPath: filePath, inputName: fileName || `input${extension}`, tempDir });
+    const results = [];
+    for (const input of rivaInputs) {
+      const result = await runPythonAsr({
+        apiKey,
+        filePath: input.path,
+        functionId: provider.functionId,
+        endpoint: provider.endpoint,
+        languageCode,
+        translate: Boolean(provider.translate),
+      });
+      results.push({ offset: input.offset, result });
+    }
+    return mergeRivaChunkResults(results);
   } finally {
     await rm(tempDir, { recursive: true, force: true });
   }

@@ -10,6 +10,10 @@ export function isOpenAICompatibleAsr(asrProvider = {}) {
   return (asrProvider.transport || "nvidia-http") === "nvidia-http" && asrProvider.sendModel !== false;
 }
 
+export function isRivaGrpcAsr(asrProvider = {}) {
+  return (asrProvider.transport || "") === "nvidia-riva-grpc";
+}
+
 export function isDashScopeFunAsr(asrProvider = {}) {
   return (asrProvider.transport || "") === "dashscope-funasr";
 }
@@ -20,6 +24,7 @@ export function shouldSubmitOriginalVideoForAsr(asrProvider = {}) {
 
 export function shouldSubmitOriginalMediaForAsr(file, asrProvider = {}, duration = 0) {
   if (!file) return false;
+  if (isRivaGrpcAsr(asrProvider) && file.type?.startsWith("video")) return true;
   if (isDashScopeFunAsr(asrProvider)) return Boolean(file.type?.startsWith("video") || file.type?.startsWith("audio"));
   if (!isOpenAICompatibleAsr(asrProvider)) return false;
   if (file.type?.startsWith("video")) return shouldSubmitOriginalVideoForAsr(asrProvider);

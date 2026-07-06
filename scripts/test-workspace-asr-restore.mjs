@@ -111,6 +111,28 @@ try {
   await page.waitForFunction(() => document.querySelector(".subtitle-table .table-row:not(.table-head)")?.textContent?.includes("恢复项目转写测试"));
   assert.equal(workspaceAsrCalled, true, "restored media should call the workspace ASR endpoint");
 
+  await createWorkspaceProject(baseUrl, "restore_riva_video_project", "restore-riva-video.mp4");
+  await page.evaluate(() => {
+    localStorage.setItem("echo.asrProvider.v1", JSON.stringify({
+      label: "NVIDIA Whisper Large v3（托管 Riva gRPC）",
+      transport: "nvidia-riva-grpc",
+      endpoint: "grpc.nvcf.nvidia.com:443",
+      functionId: "whisper-large-v3",
+      model: "whisper-large-v3",
+      apiKey: "nvapi-test-key",
+      languageCode: "en",
+      sendModel: false,
+      videoInputMode: "extract",
+      lastTest: { ok: true, message: "测试通过", at: Date.now() },
+    }));
+  });
+  await page.goto(`${baseUrl}/#workbench/video-transcribe/restore_riva_video_project`, { waitUntil: "networkidle" });
+  await page.reload({ waitUntil: "networkidle" });
+  await page.waitForFunction(() => document.querySelector(".workspace-title strong")?.textContent?.includes("视频转写"));
+  const rivaStartButton = page.getByRole("button", { name: /开始转写/ }).first();
+  await rivaStartButton.waitFor({ state: "visible" });
+  assert.equal(await rivaStartButton.isEnabled(), true, "restored video should allow Riva transcription because server prepares compatible audio");
+
   await createWorkspaceProject(baseUrl, "restore_browser_extract_project", "restore-browser-extract.mp4");
   let browserExtractAsrCalled = false;
   await page.route("**/api/asr/transcribe", async (route) => {
