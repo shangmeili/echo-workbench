@@ -675,6 +675,21 @@ async function prepareAsrInputs(file, mediaDuration, onProgress, asrProvider) {
   return [{ file, offset: 0, duration, converted: false, chunked: false }];
 }
 
+async function fileFromWorkspaceMedia(mediaSource) {
+  if (!mediaSource?.workspaceUrl) throw new Error("本地工作区缺少可读取的媒体副本。");
+  const response = await fetch(mediaSource.workspaceUrl);
+  if (!response.ok) throw new Error("无法读取本地工作区媒体副本，请重新上传媒体。");
+  const blob = await response.blob();
+  return new File(
+    [blob],
+    mediaSource.name || mediaSource.fileName || "workspace-media",
+    {
+      type: mediaSource.type || blob.type || "application/octet-stream",
+      lastModified: mediaSource.lastModified || Date.now(),
+    },
+  );
+}
+
 function offsetRows(rows, offset) {
   if (!offset) return rows;
   return rows.map((row) => ({
@@ -1659,7 +1674,8 @@ function WorkbenchView({ activeTool, onBackHome, rows, setRows, media, setMedia,
   const asrMedia = media?.asrAudio || media;
   const hasAsrFile = Boolean(media?.asrAudio?.file || media?.file);
   const workspaceSourceReady = Boolean(!hasAsrFile && workspaceMediaCanUseAsAsrInput(asrMedia, asrProvider, media?.asrAudio?.duration || media?.duration || 0));
-  const hasTranscriptionInput = Boolean(hasAsrFile || workspaceSourceReady);
+  const workspaceFileRecoverable = Boolean(!hasAsrFile && asrMedia?.workspaceUrl);
+  const hasTranscriptionInput = Boolean(hasAsrFile || workspaceSourceReady || workspaceFileRecoverable);
   const videoHasAudioTrack = Boolean(mediaType.startsWith("video") && (media?.asrAudio?.file || media?.asrAudio?.workspaceUrl));
   const transcriptionFile = media?.asrAudio?.file || media?.file || asrMedia;
   const transcriptionDuration = media?.asrAudio?.duration || media?.duration || 0;
@@ -1679,7 +1695,7 @@ function WorkbenchView({ activeTool, onBackHome, rows, setRows, media, setMedia,
     : !media?.url && !media?.file
       ? missingMediaHint
     : !hasTranscriptionInput
-      ? "本地副本可预览，但当前转写服务需要浏览器重新读取原始文件。请切换百炼 ASR，或重新上传媒体。"
+      ? "本地副本不可读取，请重新上传媒体。"
     : !asrConfigured
       ? "需配置云端转写服务"
       : !asrDependencyOk
@@ -2409,9 +2425,15 @@ ${rawText}`;
         fromAudioTrack: usingAudioTrack,
         name: asrMediaSource?.name || media?.name || "media",
         type: asrMediaSource?.type || media?.type || "",
+        lastModified: asrMediaSource?.lastModified || media?.lastModified || 0,
       };
-      const asrInputs = asrSource.file
-        ? await prepareAsrInputs(asrSource.file, asrSource.duration, setMessage, asrProvider)
+      const recoveredFile = !asrSource.file && !workspaceSourceReady && asrSource.workspaceUrl
+        ? await fileFromWorkspaceMedia(asrSource)
+        : null;
+      if (recoveredFile) setMessage("已从本地工作区读取媒体副本，正在准备转写输入。");
+      const asrFile = asrSource.file || recoveredFile;
+      const asrInputs = asrFile
+        ? await prepareAsrInputs(asrFile, asrSource.duration, setMessage, asrProvider)
         : workspaceSourceReady
           ? [{
             workspaceProjectId: activeProjectId,

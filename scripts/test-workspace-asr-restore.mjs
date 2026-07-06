@@ -17,12 +17,12 @@ async function waitForServer(baseUrl, timeoutMs = 30_000) {
   throw new Error(`server did not start: ${baseUrl}`);
 }
 
-async function createWorkspaceProject(baseUrl) {
+async function createWorkspaceProject(baseUrl, id = "restore_asr_project", name = "restore-asr-video.mp4") {
   const project = {
-    id: "restore_asr_project",
+    id,
     recent: {
-      id: "restore_asr_project",
-      name: "restore-asr-video.mp4",
+      id,
+      name,
       meta: "video/mp4 · 0.1 MB",
       status: "已导入",
       time: "测试",
@@ -33,13 +33,13 @@ async function createWorkspaceProject(baseUrl) {
     tool: "video-transcribe",
     rows: [],
     workspaceState: { sourceLanguage: "中文", targetLanguage: "英文", exportMode: "source", draft: "", transcriptionContext: "" },
-    media: { name: "restore-asr-video.mp4", type: "video/mp4", size: 128, duration: 8 },
+    media: { name, type: "video/mp4", size: 128, duration: 8 },
     asrAudio: null,
     updatedAt: Date.now(),
   };
   const form = new FormData();
   form.set("project", JSON.stringify(project));
-  form.set("media", new File([Buffer.from("not-a-real-video-but-restorable")], "restore-asr-video.mp4", { type: "video/mp4" }));
+  form.set("media", new File([Buffer.from("not-a-real-video-but-restorable")], name, { type: "video/mp4" }));
   const response = await fetch(`${baseUrl}/api/workspace/projects`, { method: "POST", body: form });
   const data = await response.json();
   assert.equal(response.ok, true, data.error || "failed to create workspace project");
@@ -110,6 +110,45 @@ try {
   await startButton.click();
   await page.waitForFunction(() => document.querySelector(".subtitle-table .table-row:not(.table-head)")?.textContent?.includes("恢复项目转写测试"));
   assert.equal(workspaceAsrCalled, true, "restored media should call the workspace ASR endpoint");
+
+  await createWorkspaceProject(baseUrl, "restore_browser_extract_project", "restore-browser-extract.mp4");
+  let browserExtractAsrCalled = false;
+  await page.route("**/api/asr/transcribe", async (route) => {
+    browserExtractAsrCalled = true;
+    const contentType = route.request().headers()["content-type"] || "";
+    assert.match(contentType, /multipart\/form-data/);
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        text: "恢复项目浏览器输入测试。",
+        segments: [{ start: 0, end: 1.2, text: "恢复项目浏览器输入测试。" }],
+        provider: "workspace-browser-file-test",
+      }),
+    });
+  });
+  await page.evaluate(() => {
+    localStorage.setItem("echo.asrProvider.v1", JSON.stringify({
+      label: "自定义 HTTP 转写端点",
+      transport: "nvidia-http",
+      endpoint: "https://asr.example.test/v1/audio/transcriptions",
+      model: "mock-asr",
+      apiKey: "browser-file-test-key",
+      languageCode: "zh",
+      sendModel: true,
+      videoInputMode: "extract",
+      lastTest: null,
+    }));
+  });
+  await page.goto(`${baseUrl}/#workbench/video-transcribe/restore_browser_extract_project`, { waitUntil: "networkidle" });
+  await page.reload({ waitUntil: "networkidle" });
+  await page.waitForFunction(() => document.querySelector(".workspace-title strong")?.textContent?.includes("视频转写"));
+  const browserExtractStartButton = page.getByRole("button", { name: /开始转写/ }).first();
+  await browserExtractStartButton.waitFor({ state: "visible" });
+  assert.equal(await browserExtractStartButton.isEnabled(), true, "restored workspace media should enable browser-file ASR providers without forcing re-upload");
+  await browserExtractStartButton.click();
+  await page.waitForFunction(() => document.querySelector(".subtitle-table .table-row:not(.table-head)")?.textContent?.includes("恢复项目浏览器输入测试"));
+  assert.equal(browserExtractAsrCalled, true, "restored media should be re-read from workspace and submitted to the regular ASR endpoint when needed");
 
   await page.goto(`${baseUrl}/#models/asr`, { waitUntil: "networkidle" });
   await page.reload({ waitUntil: "networkidle" });
