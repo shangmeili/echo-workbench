@@ -978,8 +978,12 @@ async function readApiResponse(response, fallbackMessage) {
   } catch {
     data = { error: text };
   }
-  if (!response.ok) {
-    const error = new Error(data.error || data.message || fallbackMessage);
+  const upstreamError = data?.error || (data?.status === "error" ? data?.message : "");
+  if (!response.ok || upstreamError) {
+    const errorText = typeof upstreamError === "object"
+      ? upstreamError.message || upstreamError.error || JSON.stringify(upstreamError)
+      : upstreamError;
+    const error = new Error(errorText || data.message || fallbackMessage);
     error.stage = data.stage || "";
     error.code = data.code || "";
     error.retryable = data.retryable;
@@ -3796,20 +3800,6 @@ ${JSON.stringify(chunk.map((row) => ({ id: row.id, start: row.start, end: row.en
                 <small>用于转写后的自动校正和翻译，不会作为新内容写入结果。</small>
               </label>
             ))}
-            {!isSubtitleFileFlow && !rows.length && (
-              <div className="setup-action-footer">
-                <button className="primary start-transcription-button" onClick={startTranscription} disabled={!canStartTranscription || busy === "asr"}>
-                  {busy === "asr" ? <Loader2 className="spin" size={18} /> : <AudioWaveform size={18} />}
-                  {busy === "asr" ? "转写中" : "开始转写"}
-                </button>
-                {busy === "asr" && (
-                  <button className="secondary compact-tool-button cancel-transcription-button" type="button" onClick={cancelTranscription}>
-                    <X size={16} />
-                    取消转写
-                  </button>
-                )}
-              </div>
-            )}
             {!isSubtitleFileFlow && transcriptionStatus.state !== "idle" && (!rows.length || transcriptionStatus.state !== "success") && (
               <div className={`transcription-status-card ${transcriptionStatus.state}`} role={transcriptionStatus.state === "error" ? "alert" : "status"} aria-live="polite">
                 <div>
@@ -3838,6 +3828,20 @@ ${JSON.stringify(chunk.map((row) => ({ id: row.id, start: row.start, end: row.en
                       转写服务
                     </button>
                   </div>
+                )}
+              </div>
+            )}
+            {!isSubtitleFileFlow && !rows.length && (
+              <div className="setup-action-footer">
+                <button className="primary start-transcription-button" onClick={startTranscription} disabled={!canStartTranscription || busy === "asr"}>
+                  {busy === "asr" ? <Loader2 className="spin" size={18} /> : <AudioWaveform size={18} />}
+                  {busy === "asr" ? "转写中" : "开始转写"}
+                </button>
+                {busy === "asr" && (
+                  <button className="secondary compact-tool-button cancel-transcription-button" type="button" onClick={cancelTranscription}>
+                    <X size={16} />
+                    取消转写
+                  </button>
                 )}
               </div>
             )}
