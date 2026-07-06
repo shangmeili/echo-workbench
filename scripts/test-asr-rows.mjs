@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { asrResultHasTiming, dedupeAdjacentAsrRows, detectTranscriptionQualityIssue, groupWordsToRows, joinAsrTokens, mergeShortAdjacentAsrRows, normalizeAsrText, rowsFromAsrResult, splitTranscriptIntoSentences } from "../src/asrRows.js";
+import { asrResultHasTiming, dedupeAdjacentAsrRows, detectTranscriptionQualityIssue, groupWordsToRows, joinAsrTokens, mergeShortAdjacentAsrRows, normalizeAsrText, rowsFromAsrResult, splitTranscriptIntoSentences, transcriptWeight } from "../src/asrRows.js";
 
 assert.deepEqual(
   splitTranscriptIntoSentences("大家好。今天测试转写！换一行\n继续。"),
@@ -57,6 +57,23 @@ assert.deepEqual(
     { start: 2.4, end: 5.2, speaker: "S2", text: "第二段转写" },
   ],
 );
+
+const longSegmentRows = rowsFromAsrResult({
+  segments: [
+    {
+      start: 0,
+      end: 18,
+      text: "第一部分内容很长，需要按照字幕可读性进行拆分，第二部分继续补充背景信息，第三部分给出结论。最后一句保持独立。",
+    },
+  ],
+});
+
+assert.ok(longSegmentRows.length > 1);
+assert.ok(longSegmentRows.every((row) => transcriptWeight(row.text) <= 24));
+for (let index = 1; index < longSegmentRows.length; index += 1) {
+  assert.ok(longSegmentRows[index].start >= longSegmentRows[index - 1].end);
+}
+assert.equal(longSegmentRows.at(-1).end, 18);
 
 const textRows = rowsFromAsrResult({ transcript: "第一句没有时间戳。第二句会按时长分配。" }, 12);
 

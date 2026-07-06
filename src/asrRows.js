@@ -169,6 +169,51 @@ function segmentText(segment) {
   return normalizeAsrText(segment?.text ?? segment?.transcript ?? segment?.sentence ?? "");
 }
 
+function rowsFromSegment(segment, segmentIndex) {
+  const text = segmentText(segment);
+  if (!text) return [];
+  const start = finiteNumber(segment?.start ?? segment?.start_time ?? segment?.startTime, segmentIndex * 3);
+  const inferredEnd = start + Math.max(transcriptWeight(text) * 0.22, 2);
+  const rawEnd = finiteNumber(segment?.end ?? segment?.end_time ?? segment?.endTime, inferredEnd);
+  const end = Math.max(start + 0.5, rawEnd);
+  const speaker = segment.speaker || segment.speaker_label || "未标注";
+  const sentences = splitTranscriptIntoSentences(text);
+  if (sentences.length <= 1 && transcriptWeight(text) <= maxMergedUnits(text)) {
+    return [{
+      id: `asr-segment-${Date.now()}-${segmentIndex}`,
+      start,
+      end,
+      speaker,
+      text,
+      translation: "",
+    }];
+  }
+
+  const duration = Math.max(0.5, end - start);
+  const totalWeight = sentences.reduce((sum, item) => sum + transcriptWeight(item), 0) || sentences.length || 1;
+  const minimumSegmentDuration = Math.min(1.1, Math.max(0.35, (duration / Math.max(sentences.length, 1)) * 0.45));
+  let cursor = start;
+  return sentences.map((sentence, sentenceIndex) => {
+    const isLast = sentenceIndex === sentences.length - 1;
+    const remainingSegments = sentences.length - sentenceIndex - 1;
+    const remainingDuration = Math.max(0.35, end - cursor);
+    const proportional = duration * (transcriptWeight(sentence) / totalWeight);
+    const segmentDuration = isLast ? remainingDuration : Math.max(proportional, minimumSegmentDuration);
+    const latestEnd = Math.max(cursor + 0.3, end - remainingSegments * minimumSegmentDuration);
+    const rowEnd = isLast ? end : Math.min(latestEnd, cursor + segmentDuration);
+    const row = {
+      id: `asr-segment-${Date.now()}-${segmentIndex}-${sentenceIndex}`,
+      start: cursor,
+      end: Math.max(cursor + 0.35, rowEnd),
+      speaker,
+      text: sentence,
+      translation: "",
+    };
+    cursor = row.end;
+    return row;
+  }).filter((row) => row.text.trim());
+}
+
 function rowDuration(row) {
   return Math.max(0, finiteNumber(row?.end, 0) - finiteNumber(row?.start, 0));
 }
@@ -249,20 +294,7 @@ export function mergeShortAdjacentAsrRows(rows, options = {}) {
 
 export function rowsFromAsrResult(result, fallbackDuration = 0) {
   if (Array.isArray(result?.segments) && result.segments.length) {
-    return result.segments.map((segment, index) => {
-      const text = segmentText(segment);
-      const start = finiteNumber(segment?.start ?? segment?.start_time ?? segment?.startTime, index * 3);
-      const inferredEnd = start + Math.max(transcriptWeight(text) * 0.22, 2);
-      const end = finiteNumber(segment?.end ?? segment?.end_time ?? segment?.endTime, inferredEnd);
-      return {
-        id: `asr-segment-${Date.now()}-${index}`,
-        start,
-        end: Math.max(start + 0.5, end),
-        speaker: segment.speaker || segment.speaker_label || "未标注",
-        text,
-        translation: "",
-      };
-    }).filter((row) => row.text.trim());
+    return result.segments.flatMap((segment, index) => rowsFromSegment(segment, index));
   }
   if (Array.isArray(result?.words) && result.words.length) {
     const rows = groupWordsToRows(result.words);

@@ -1095,13 +1095,13 @@ function offsetRivaTimingItems(items = [], offset = 0) {
 function mergeRivaChunkResults(results = []) {
   const text = results.map((item) => String(item.result?.text || "").trim()).filter(Boolean).join(" ").trim();
   const words = results.flatMap((item) => offsetRivaTimingItems(item.result?.words, item.offset));
-  const segments = results
+  const segments = words.length ? [] : results
     .map((item, index) => {
       const chunkText = String(item.result?.text || "").trim();
       if (!chunkText) return null;
       return {
         start: item.offset,
-        end: item.offset + Math.max(2, Math.min(RIVA_CHUNK_SECONDS, chunkText.split(/\s+/).filter(Boolean).length * 0.45)),
+        end: item.offset + RIVA_CHUNK_SECONDS,
         text: chunkText,
         speaker: "未标注",
         id: `riva-chunk-${index}`,
