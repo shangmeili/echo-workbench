@@ -126,6 +126,10 @@ function mergeAbbreviationChunks(chunks) {
 function splitLongSentenceChunk(text) {
   const clean = String(text || "").trim();
   if (!clean) return [];
+  const implicitEnglishParts = splitEnglishImplicitSentenceBoundaries(clean);
+  if (implicitEnglishParts.length > 1) {
+    return implicitEnglishParts.flatMap((part) => splitLongSentenceChunk(part));
+  }
   const implicitParts = splitCjkImplicitSentenceBoundaries(clean);
   if (implicitParts.length > 1) {
     return implicitParts.flatMap((part) => splitLongSentenceChunk(part));
@@ -178,8 +182,46 @@ const englishWeakEndingWords = new Set([
   "for", "in", "on", "at", "with", "from", "into", "as", "by",
 ]);
 
+const englishSentenceStartWords = new Set([
+  "i", "you", "he", "she", "it", "we", "they", "this", "that", "these", "those", "there",
+  "then", "so", "but", "and", "for", "now",
+]);
+
 function cleanEnglishWord(word) {
   return String(word || "").replace(/^[^A-Za-z0-9']+|[^A-Za-z0-9']+$/g, "").toLowerCase();
+}
+
+function isCapitalizedEnglishToken(word) {
+  return /^[A-Z][A-Za-z0-9']*$/.test(String(word || "").replace(/^[^A-Za-z0-9']+|[^A-Za-z0-9']+$/g, ""));
+}
+
+function splitEnglishImplicitSentenceBoundaries(value) {
+  const clean = String(value || "").trim();
+  if (!isLatinText(clean) || /[.!?;:]/.test(clean)) return [clean].filter(Boolean);
+  const words = clean.split(/\s+/).filter(Boolean);
+  if (words.length < 7) return [clean];
+  const result = [];
+  let current = [];
+
+  words.forEach((word, index) => {
+    const currentClean = cleanEnglishWord(word);
+    const previousClean = cleanEnglishWord(words[index - 1]);
+    const remainingWords = words.length - index;
+    const shouldSplit = current.length >= 3
+      && remainingWords >= 2
+      && englishSentenceStartWords.has(currentClean)
+      && isCapitalizedEnglishToken(word)
+      && !englishWeakEndingWords.has(previousClean);
+
+    if (shouldSplit) {
+      result.push(current.join(" "));
+      current = [];
+    }
+    current.push(word);
+  });
+
+  if (current.length) result.push(current.join(" "));
+  return result.length > 1 ? result : [clean];
 }
 
 function splitEnglishTextByReadableLength(value, maxWords) {

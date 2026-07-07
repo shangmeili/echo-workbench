@@ -61,6 +61,21 @@ assert.deepEqual(
   ["this is a long english transcription result without punctuation", "and it should be split into readable subtitle rows for proofreading"],
 );
 
+assert.deepEqual(
+  splitTranscriptIntoSentences("You left your son You abandoned your family I was ashamed"),
+  ["You left your son", "You abandoned your family", "I was ashamed"],
+);
+
+assert.deepEqual(
+  splitTranscriptIntoSentences("I can become the Ripper that you want You would turn your humanity off For a short time yes"),
+  ["I can become the Ripper that you want", "You would turn your humanity off", "For a short time yes"],
+);
+
+assert.deepEqual(
+  splitTranscriptIntoSentences("Previously on The Vampire Diaries You left your son"),
+  ["Previously on The Vampire Diaries", "You left your son"],
+);
+
 assert.ok(
   splitTranscriptIntoSentences("this is a long english transcription result without punctuation and it should be split into readable subtitle rows for proofreading")
     .every((row) => !/\b(?:and|or|but|that|which|who|to|of|for|in|on|at|with|from|into|as|by)$/i.test(row)),
