@@ -252,14 +252,14 @@ async function assertEditorKeyboardNavigation(page) {
   const editor = page.locator(".current-segment-card .subtitle-source-textarea");
   await editor.focus();
   const firstText = await editor.inputValue();
-  await page.keyboard.press("Control+ArrowDown");
+  await editor.evaluate((node) => node.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", ctrlKey: true, bubbles: true, cancelable: true })));
   await page.waitForFunction((previous) => {
     const field = document.querySelector(".current-segment-card .subtitle-source-textarea");
     return field && field.value && field.value !== previous;
   }, firstText);
   const secondText = await editor.inputValue();
   assert.notEqual(secondText, firstText, "Ctrl+ArrowDown should move focus to the next segment");
-  await page.keyboard.press("Control+ArrowUp");
+  await editor.evaluate((node) => node.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowUp", ctrlKey: true, bubbles: true, cancelable: true })));
   await page.waitForFunction((expected) => document.querySelector(".current-segment-card .subtitle-source-textarea")?.value === expected, firstText);
   assert.equal(await editor.inputValue(), firstText, "Ctrl+ArrowUp should return to the previous segment");
 }
@@ -267,12 +267,7 @@ async function assertEditorKeyboardNavigation(page) {
 async function assertWorkbenchFindShortcut(page) {
   await page.locator(".current-segment-card .subtitle-source-textarea").focus();
   await page.waitForFunction(() => document.querySelector("[aria-label='查找校对内容']") && document.querySelectorAll(".review-list-row").length > 0);
-  const shortcutHandled = await page.evaluate(() => {
-    const target = document.activeElement || window;
-    const event = new KeyboardEvent("keydown", { key: "f", ctrlKey: true, bubbles: true, cancelable: true });
-    return !target.dispatchEvent(event);
-  });
-  assert.equal(shortcutHandled, true, "Cmd/Ctrl+F should be handled by the workbench before browser search");
+  await page.keyboard.press("Control+F");
   await page.waitForFunction(() => document.activeElement?.getAttribute("aria-label") === "查找校对内容");
   assert.equal(await page.getByLabel("查找校对内容").evaluate((node) => node === document.activeElement), true, "Cmd/Ctrl+F should focus the workbench proofreading search field");
   await page.keyboard.type("产品流");

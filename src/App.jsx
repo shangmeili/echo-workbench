@@ -45,7 +45,7 @@ import { getAsrLanguageCode, getAsrLanguageCompatibilityWarning } from "./asrLan
 import { asrProviderPresets, defaultAsrProvider } from "./asrPresets.js";
 import { buildTranslationMessages, formatTermReference, stripWrappingCodeFence } from "./modelText.js";
 import { getCorrectedTextValue, getTranslationValue, parseJsonArrayFromModelText } from "./modelResponse.js";
-import { getSubtitleQualityHints, hasTimingExportIssue, normalizeReviewRows, repairReviewStructure } from "./reviewRows.js";
+import { getSubtitleQualityHints, hasTimingExportIssue, normalizeReviewRows, repairReviewStructure, repairReviewStructurePreservingEmpty } from "./reviewRows.js";
 import { parseSubtitle, parseTimestamp } from "./subtitleImport.js";
 import { exportRows, formatClock, validateExportRows } from "./subtitleExport.js";
 import { defaultWorkspaceState, workspaceDefaultsForFeature } from "./workspaceDefaults.js";
@@ -709,15 +709,7 @@ function offsetRows(rows, offset) {
 }
 
 function repairReviewStructureUnlessEmpty(rows = []) {
-  if (rows.some((row) => !String(row?.text || "").trim())) {
-    return {
-      rows: normalizeReviewRows(rows),
-      splitRowCount: 0,
-      addedRowCount: 0,
-      mergedRowCount: 0,
-    };
-  }
-  return repairReviewStructure(rows);
+  return repairReviewStructurePreservingEmpty(rows);
 }
 
 function reviewRowsChanged(previousRows = [], nextRows = []) {
@@ -2180,7 +2172,7 @@ function WorkbenchView({ activeTool, onBackHome, rows, setRows, media, setMedia,
     const hints = qualityHintMap.get(target.id) || [];
     setSelectedRowId(target.id);
     if (showMessage) {
-      setMessage(`检测到 ${timingExportIssueCount} 条时间轴问题，导出时会自动修复：${hints.filter((hint) => hint === "时间无效" || hint === "时间重叠").join("、")}。`);
+      setMessage(`系统会在导出前自动整理 ${timingExportIssueCount} 条时间轴异常：${hints.filter((hint) => hint === "时间无效" || hint === "时间重叠").join("、")}。`);
     }
     const escapeSelector = globalThis.CSS?.escape || ((value) => String(value).replace(/"/g, '\\"'));
     window.setTimeout(() => {
@@ -2244,7 +2236,7 @@ function WorkbenchView({ activeTool, onBackHome, rows, setRows, media, setMedia,
 
   const repairLongSubtitleRows = () => {
     if (!longSubtitleIssueRows.length) return;
-    const repairResult = repairReviewStructure(rows);
+    const repairResult = repairReviewStructureUnlessEmpty(rows);
     if (repairResult.addedRowCount <= 0) {
       jumpToNextQualityIssue();
       setMessage("当前长段缺少稳定断点，已定位到对应段落，可在校对区直接编辑。");

@@ -22,6 +22,16 @@ assert.deepEqual(
 );
 
 assert.deepEqual(
+  splitTranscriptIntoSentences("我知道你不相信我但是我们现在必须离开这里否则就来不及了"),
+  ["我知道你不相信我", "但是我们现在必须离开这里", "否则就来不及了"],
+);
+
+assert.deepEqual(
+  splitTranscriptIntoSentences("等一下我还没有准备好你先不要开始我们马上处理"),
+  ["等一下我还没有准备好", "你先不要开始我们马上处理"],
+);
+
+assert.deepEqual(
   splitTranscriptIntoSentences("我以为我们只能给 Kade 最糟糕的最糟糕的就像这个人 Kade 可以有他在这里继续补充后面的长句。"),
   ["我以为我们只能给 Kade 最糟糕的最糟糕的", "就像这个人 Kade", "可以有他在这里继续补充后面的长句。"],
 );

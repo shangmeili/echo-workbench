@@ -107,14 +107,23 @@ function splitCjkTextByReadableLength(value, maxUnits) {
 
 function chooseReadableCjkSplitIndex(value, maxUnits, minimumUnits) {
   const softBreakBeforePatterns = [
-    "然后", "所以", "但是", "不过", "可是", "因为", "如果", "同时", "并且", "以及", "为了",
-    "需要", "应该", "可以", "可能", "其实", "就是", "就像", "那么", "总之",
+    "然后", "所以", "但是", "不过", "可是", "因为", "如果", "否则", "虽然", "只是",
+    "同时", "并且", "以及", "为了", "接着", "另外", "最后",
+    "需要", "应该", "可以", "可能", "其实", "就是", "就像", "那么", "总之", "换句话说",
     "你会", "我会", "我们", "他们", "她们", "它们", "这个", "那个", "这里", "那里",
+    "我知道", "我觉得", "我以为", "我想", "我要", "我不", "我们先", "我们现在",
+    "你知道", "你觉得", "你想", "你要", "你不", "你先", "他是", "她是", "是不是",
   ];
   const strongBreakPatterns = new Set([
-    "然后", "所以", "但是", "不过", "可是", "因为", "如果", "同时", "并且", "以及", "为了",
-    "需要", "应该", "可以", "可能", "其实", "就是", "就像", "那么", "总之", "你会", "我会",
+    "然后", "所以", "但是", "不过", "可是", "因为", "如果", "否则", "虽然", "只是",
+    "同时", "并且", "以及", "为了", "接着", "另外", "最后",
+    "需要", "应该", "可以", "可能", "其实", "就是", "就像", "那么", "总之", "换句话说",
+    "你会", "我会", "我知道", "我觉得", "我以为", "我想", "我要", "我不",
+    "你知道", "你觉得", "你想", "你要", "你不", "是不是",
   ]);
+  const softBreakAfterPatterns = [
+    "等一下", "等一等", "没关系", "是的", "不是", "好了", "对吧", "好吗", "知道了",
+  ];
   const candidates = [];
   const addCandidate = (index, weight = 1, minUnits = minimumUnits) => {
     if (index <= 0 || index >= value.length) return;
@@ -131,6 +140,14 @@ function chooseReadableCjkSplitIndex(value, maxUnits, minimumUnits) {
     while (index > 0) {
       const isStrongBreak = strongBreakPatterns.has(pattern);
       addCandidate(index, isStrongBreak ? 7 : 1.5, isStrongBreak ? Math.max(4, minimumUnits - 2) : minimumUnits);
+      index = value.indexOf(pattern, index + pattern.length);
+    }
+  }
+
+  for (const pattern of softBreakAfterPatterns) {
+    let index = value.indexOf(pattern);
+    while (index >= 0) {
+      addCandidate(index + pattern.length, 5, Math.max(3, minimumUnits - 3));
       index = value.indexOf(pattern, index + pattern.length);
     }
   }

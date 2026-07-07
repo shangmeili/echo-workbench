@@ -4,7 +4,7 @@ import {
   splitTranscriptIntoSentences,
   transcriptWeight,
 } from "../src/asrRows.js";
-import { repairReviewStructure } from "../src/reviewRows.js";
+import { repairReviewStructure, repairReviewStructurePreservingEmpty } from "../src/reviewRows.js";
 import { parseSubtitle } from "../src/subtitleImport.js";
 
 function assertCleanTimeline(rows, label) {
@@ -115,6 +115,25 @@ const importedSubtitleRows = normalizeLikeWorkbench(parseSubtitle([
   "第二条内容很长需要系统自动处理不要把时间重叠和断句问题交给用户。",
 ].join("\n")));
 assertWorkbenchQuality(importedSubtitleRows, "subtitle import auto repair");
+
+const preservedEmptyRepair = repairReviewStructurePreservingEmpty([
+  { id: "keep-empty", start: 0, end: 1, speaker: "未标注", text: "", translation: "" },
+  {
+    id: "long-after-empty",
+    start: 1,
+    end: 9,
+    speaker: "未标注",
+    text: "我知道你不相信我但是我们现在必须离开这里否则就来不及了",
+    translation: "",
+  },
+]).rows;
+assert.equal(preservedEmptyRepair[0].id, "keep-empty", "empty rows should be preserved for explicit export blocking");
+assert.equal(preservedEmptyRepair[0].text, "");
+assert.ok(preservedEmptyRepair.length >= 3, "non-empty rows should still be repaired when an empty row exists elsewhere");
+assert.ok(
+  preservedEmptyRepair.slice(1).every((row) => transcriptWeight(row.text) <= 20),
+  `non-empty rows after an empty row should be readable: ${preservedEmptyRepair.map((row) => row.text).join(" | ")}`,
+);
 
 assert.deepEqual(
   splitTranscriptIntoSentences("The U.S. Army reviewed the audio. next sentence starts lowercase."),

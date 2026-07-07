@@ -108,3 +108,39 @@ export function repairReviewStructure(inputRows = []) {
     rows: normalizeReviewRows(repairedRows),
   };
 }
+
+export function repairReviewStructurePreservingEmpty(inputRows = []) {
+  const normalizedRows = normalizeReviewRows(inputRows);
+  const repairedRows = [];
+  let pendingRows = [];
+  let splitRowCount = 0;
+  let addedRowCount = 0;
+  let mergedRowCount = 0;
+
+  const flushPendingRows = () => {
+    if (!pendingRows.length) return;
+    const repair = repairReviewStructure(pendingRows);
+    repairedRows.push(...repair.rows);
+    splitRowCount += repair.splitRowCount || 0;
+    addedRowCount += repair.addedRowCount || 0;
+    mergedRowCount += repair.mergedRowCount || 0;
+    pendingRows = [];
+  };
+
+  normalizedRows.forEach((row) => {
+    if (String(row.text || "").trim()) {
+      pendingRows.push(row);
+      return;
+    }
+    flushPendingRows();
+    repairedRows.push(row);
+  });
+  flushPendingRows();
+
+  return {
+    rows: normalizeReviewRows(repairedRows),
+    splitRowCount,
+    addedRowCount,
+    mergedRowCount,
+  };
+}
