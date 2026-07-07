@@ -5,10 +5,10 @@ export function splitTranscriptIntoSentences(text) {
     .replace(/\n{2,}/g, "\n")
     .trim();
   if (!clean) return [];
-  const chunks = clean
-    .split(/\n+|(?<=[。！？!?；;])\s*/)
+  const chunks = mergeAbbreviationChunks(clean
+    .split(/\n+|(?<=[。！？!?；;])\s*|(?<=[A-Za-z]\.)\s+(?=[A-Z"“'(\[])/)
     .map((item) => item.trim())
-    .filter(Boolean);
+    .filter(Boolean));
   const rows = chunks.flatMap((chunk) => splitLongSentenceChunk(chunk));
   if (rows.length > 1) return rows;
   if (/\s/.test(clean) && /[A-Za-z]/.test(clean)) {
@@ -22,6 +22,19 @@ export function splitTranscriptIntoSentences(text) {
   }
   const maxChars = maxMergedUnits(clean);
   return splitCjkTextByReadableLength(clean, maxChars);
+}
+
+function mergeAbbreviationChunks(chunks) {
+  const result = [];
+  const abbreviationPattern = /\b(?:Mr|Mrs|Ms|Dr|Prof|Sr|Jr|St|vs|etc)\.$/i;
+  for (const chunk of chunks) {
+    if (result.length && abbreviationPattern.test(result.at(-1))) {
+      result[result.length - 1] = `${result.at(-1)} ${chunk}`;
+      continue;
+    }
+    result.push(chunk);
+  }
+  return result;
 }
 
 function splitLongSentenceChunk(text) {
@@ -303,6 +316,60 @@ function scaleRowsToDuration(rows, targetDuration) {
   });
 }
 
+function sanitizeTimedRows(rows) {
+  return (Array.isArray(rows) ? rows : [])
+    .map((row, index) => {
+      const text = normalizeAsrText(row?.text || "");
+      if (!text) return null;
+      const start = Math.max(0, finiteNumber(row?.start, index * 1.2));
+      const rawEnd = finiteNumber(row?.end, start + estimateSpeechDurationForText(text));
+      return {
+        ...row,
+        start,
+        end: Math.max(start + 0.35, rawEnd),
+        text,
+      };
+    })
+    .filter(Boolean)
+    .sort((left, right) => {
+      const startDiff = finiteNumber(left.start, 0) - finiteNumber(right.start, 0);
+      if (startDiff) return startDiff;
+      return finiteNumber(left.end, 0) - finiteNumber(right.end, 0);
+    });
+}
+
+export function repairAsrTimeline(rows) {
+  const repaired = sanitizeTimedRows(rows);
+  if (repaired.length <= 1) return repaired;
+
+  for (let index = 1; index < repaired.length; index += 1) {
+    const previous = repaired[index - 1];
+    const current = repaired[index];
+    const previousEnd = finiteNumber(previous.end, finiteNumber(previous.start, 0) + 0.35);
+    const currentStart = finiteNumber(current.start, previousEnd);
+    if (currentStart >= previousEnd) continue;
+
+    const previousStart = finiteNumber(previous.start, 0);
+    const currentEnd = Math.max(currentStart + 0.35, finiteNumber(current.end, currentStart + 0.35));
+    const boundary = Math.max(
+      previousStart + 0.35,
+      Math.min(currentEnd - 0.35, (currentStart + previousEnd) / 2),
+    );
+
+    if (Number.isFinite(boundary) && boundary > previousStart && boundary < currentEnd) {
+      previous.end = boundary;
+      current.start = boundary;
+      current.end = Math.max(current.start + 0.35, currentEnd);
+      continue;
+    }
+
+    current.start = previousEnd;
+    current.end = Math.max(current.start + 0.35, currentEnd);
+  }
+
+  return repaired;
+}
+
 function repairCoarseSegmentTiming(rows, fallbackDuration = 0) {
   const validRows = Array.isArray(rows) ? rows.filter((row) => normalizeAsrText(row?.text || "")) : [];
   if (!validRows.length) return [];
@@ -312,15 +379,15 @@ function repairCoarseSegmentTiming(rows, fallbackDuration = 0) {
   const mediaDuration = Number(fallbackDuration) > 0 ? Number(fallbackDuration) : 0;
 
   if (mediaDuration && maxEnd > mediaDuration * 20) {
-    return scaleRowsToDuration(validRows, mediaDuration);
+    return repairAsrTimeline(scaleRowsToDuration(validRows, mediaDuration));
   }
   if (mediaDuration && maxEnd > mediaDuration * 1.75 && mediaDuration <= estimatedDuration * 2.2) {
-    return scaleRowsToDuration(validRows, mediaDuration);
+    return repairAsrTimeline(scaleRowsToDuration(validRows, mediaDuration));
   }
   if (estimatedDuration && maxEnd > estimatedDuration * 2.5) {
-    return scaleRowsToDuration(validRows, estimatedDuration);
+    return repairAsrTimeline(scaleRowsToDuration(validRows, estimatedDuration));
   }
-  return validRows;
+  return repairAsrTimeline(validRows);
 }
 
 function isShortFragment(row) {
@@ -387,7 +454,7 @@ export function rowsFromAsrResult(result, fallbackDuration = 0) {
     return repairCoarseSegmentTiming(rows, fallbackDuration);
   }
   if (Array.isArray(result?.words) && result.words.length) {
-    const rows = groupWordsToRows(result.words);
+    const rows = repairAsrTimeline(groupWordsToRows(result.words));
     if (rows.length) return rows;
   }
   const sentences = splitTranscriptIntoSentences(result?.text || result?.transcript || "");
@@ -396,7 +463,7 @@ export function rowsFromAsrResult(result, fallbackDuration = 0) {
   const totalWeight = sentences.reduce((sum, item) => sum + transcriptWeight(item), 0) || sentences.length || 1;
   const minimumSegmentDuration = Math.min(1.2, Math.max(0.45, (duration / Math.max(sentences.length, 1)) * 0.55));
   let cursor = 0;
-  return sentences.map((text, index) => {
+  return repairAsrTimeline(sentences.map((text, index) => {
     const isLast = index === sentences.length - 1;
     const remainingSegments = sentences.length - index - 1;
     const remainingDuration = Math.max(0.5, duration - cursor);
@@ -414,7 +481,7 @@ export function rowsFromAsrResult(result, fallbackDuration = 0) {
       text,
       translation: "",
     };
-  });
+  }));
 }
 
 export function asrResultHasTiming(result) {
@@ -450,7 +517,7 @@ export function dedupeAdjacentAsrRows(rows, maxGapSeconds = 1.2) {
     }
     result.push({ ...row, text });
   }
-  return result;
+  return repairAsrTimeline(result);
 }
 
 export function detectTranscriptionQualityIssue(rows, sourceLanguage, duration = 0) {

@@ -39,7 +39,7 @@ import {
   Wand2,
   X,
 } from "lucide-react";
-import { asrResultHasTiming, dedupeAdjacentAsrRows, detectTranscriptionQualityIssue, mergeShortAdjacentAsrRows, rowsFromAsrResult, splitTranscriptIntoSentences, transcriptWeight } from "./asrRows.js";
+import { asrResultHasTiming, dedupeAdjacentAsrRows, detectTranscriptionQualityIssue, mergeShortAdjacentAsrRows, repairAsrTimeline, rowsFromAsrResult, splitTranscriptIntoSentences, transcriptWeight } from "./asrRows.js";
 import { ASR_CHUNK_SECONDS, isAsrReadyAudioFile, isOpenAICompatibleAsr, shouldDecodeMediaForAsr, shouldSubmitOriginalMediaForAsr } from "./asrInputStrategy.js";
 import { getAsrLanguageCode, getAsrLanguageCompatibilityWarning } from "./asrLanguage.js";
 import { asrProviderPresets, defaultAsrProvider } from "./asrPresets.js";
@@ -2784,7 +2784,7 @@ ${rawText}`;
         parsedRows.push(...offsetRows(rowsFromAsrResult(normalizedResult, input.duration), input.offset));
       }
       throwIfAsrAborted(abortController.signal);
-      const parsed = mergeShortAdjacentAsrRows(dedupeAdjacentAsrRows(parsedRows));
+      const parsed = repairAsrTimeline(mergeShortAdjacentAsrRows(dedupeAdjacentAsrRows(parsedRows)));
       if (!parsed.length) {
         throw new Error("转写服务已响应，但没有返回可用文本。工作台没有写入空结果；请检查媒体是否有清晰语音，或在模型配置中改用更适合该素材的转写服务。");
       }

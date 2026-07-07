@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { asrResultHasTiming, dedupeAdjacentAsrRows, detectTranscriptionQualityIssue, groupWordsToRows, joinAsrTokens, mergeShortAdjacentAsrRows, normalizeAsrText, rowsFromAsrResult, splitTranscriptIntoSentences, transcriptWeight } from "../src/asrRows.js";
+import { asrResultHasTiming, dedupeAdjacentAsrRows, detectTranscriptionQualityIssue, groupWordsToRows, joinAsrTokens, mergeShortAdjacentAsrRows, normalizeAsrText, repairAsrTimeline, rowsFromAsrResult, splitTranscriptIntoSentences, transcriptWeight } from "../src/asrRows.js";
 
 assert.deepEqual(
   splitTranscriptIntoSentences("大家好。今天测试转写！换一行\n继续。"),
@@ -19,6 +19,16 @@ assert.deepEqual(
 assert.deepEqual(
   splitTranscriptIntoSentences("this is a long english transcription result without punctuation and it should be split into readable subtitle rows for proofreading"),
   ["this is a long english transcription result without punctuation and", "it should be split into readable subtitle rows for proofreading"],
+);
+
+assert.deepEqual(
+  splitTranscriptIntoSentences("It will not go through both slits. If it's unobserved, it will."),
+  ["It will not go through both slits.", "If it's unobserved, it will."],
+);
+
+assert.deepEqual(
+  splitTranscriptIntoSentences("Dr. Smith reviewed the audio. The result is usable."),
+  ["Dr. Smith reviewed the audio.", "The result is usable."],
 );
 
 assert.equal(joinAsrTokens([
@@ -154,6 +164,29 @@ assert.ok(
   mixedLanguageRows.every((row) => transcriptWeight(row.text) <= 18),
   `mixed ASR rows should stay readable, got ${mixedLanguageRows.map((row) => row.text).join(" | ")}`,
 );
+
+const overlappingRows = rowsFromAsrResult({
+  segments: [
+    { start: 0, end: 4, text: "第一句内容。" },
+    { start: 3.2, end: 6, text: "第二句内容。" },
+    { start: 5.7, end: 7.5, text: "第三句内容。" },
+  ],
+});
+for (let index = 1; index < overlappingRows.length; index += 1) {
+  assert.ok(
+    overlappingRows[index].start >= overlappingRows[index - 1].end,
+    `ASR segment overlap should be repaired: ${JSON.stringify(overlappingRows)}`,
+  );
+}
+assert.deepEqual(overlappingRows.map((row) => row.text), ["第一句内容。", "第二句内容。", "第三句内容。"]);
+
+const repairedMergedRows = repairAsrTimeline(mergeShortAdjacentAsrRows([
+  { id: "a", start: 0, end: 2.6, speaker: "S1", text: "This is fine.", translation: "" },
+  { id: "b", start: 2.3, end: 4.5, speaker: "S1", text: "This overlaps.", translation: "" },
+]));
+for (let index = 1; index < repairedMergedRows.length; index += 1) {
+  assert.ok(repairedMergedRows[index].start >= repairedMergedRows[index - 1].end);
+}
 
 assert.deepEqual(rowsFromAsrResult({}, 10), []);
 
