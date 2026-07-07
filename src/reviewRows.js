@@ -82,7 +82,7 @@ function splitReviewRowByReadableText(row) {
   });
 }
 
-function repairReadableReviewRows(inputRows = []) {
+export function repairReadableReviewRows(inputRows = []) {
   const normalizedRows = normalizeReviewRows(inputRows);
   const repairedRows = [];
   let splitRowCount = 0;

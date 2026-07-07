@@ -45,7 +45,7 @@ import { getAsrLanguageCode, getAsrLanguageCompatibilityWarning } from "./asrLan
 import { asrProviderPresets, defaultAsrProvider } from "./asrPresets.js";
 import { buildTranslationMessages, formatTermReference, stripWrappingCodeFence } from "./modelText.js";
 import { getCorrectedTextValue, getTranslationValue, parseJsonArrayFromModelText } from "./modelResponse.js";
-import { getSubtitleQualityHints, hasTimingExportIssue, normalizeReviewRows, repairReviewStructure, repairReviewStructurePreservingEmpty } from "./reviewRows.js";
+import { getSubtitleQualityHints, hasTimingExportIssue, normalizeReviewRows, repairReadableReviewRows, repairReviewStructure, repairReviewStructurePreservingEmpty } from "./reviewRows.js";
 import { parseSubtitle, parseTimestamp } from "./subtitleImport.js";
 import { exportRows, formatClock, validateExportRows } from "./subtitleExport.js";
 import { defaultWorkspaceState, workspaceDefaultsForFeature } from "./workspaceDefaults.js";
@@ -3263,9 +3263,12 @@ ${JSON.stringify(chunk.map((row) => ({ id: row.id, start: row.start, end: row.en
       ...rows.slice(index + 1),
     ];
     pushUndoSnapshot("拆分段落");
-    setRows(normalizeReviewRows(nextRows));
-    markRowsEdited(nextRows.length);
-    setMessage("已拆分当前段落。译文已清空，请重新翻译或手动校对。");
+    const readableRepair = repairReadableReviewRows(repairAsrTimeline(nextRows));
+    const repairedRows = repairAsrTimeline(readableRepair.rows);
+    setRows(normalizeReviewRows(repairedRows));
+    markRowsEdited(repairedRows.length);
+    const splitText = readableRepair.splitRowCount ? `系统已继续拆分 ${readableRepair.splitRowCount} 条过长段落。` : "";
+    setMessage(`已拆分当前段落。译文已清空，请重新翻译或手动校对。${splitText}`);
   };
 
   const mergeWithNextRow = (rowId) => {
@@ -3331,10 +3334,11 @@ ${JSON.stringify(chunk.map((row) => ({ id: row.id, start: row.start, end: row.en
     }
     const targetIndex = rows.findIndex((row) => row.id === id);
     const nextRows = rows.filter((row) => row.id !== id);
-    markRowsEdited(nextRows.length);
     pushUndoSnapshot("删除段落");
-    setRows(nextRows);
-    setSelectedRowId(nextRows[Math.min(Math.max(targetIndex, 0), nextRows.length - 1)]?.id || "");
+    const repairResult = repairReviewStructureUnlessEmpty(nextRows);
+    setRows(repairResult.rows);
+    markRowsEdited(repairResult.rows.length);
+    setSelectedRowId(repairResult.rows[Math.min(Math.max(targetIndex, 0), repairResult.rows.length - 1)]?.id || "");
     setPendingDeleteRowId("");
     setMessage("已删除段落。可使用撤销恢复。");
   };

@@ -1617,6 +1617,7 @@ try {
   const cursorSplitRows = await page.evaluate(() => [...document.querySelectorAll(".review-list-row")].map((row) => row.innerText));
   assert.match(cursorSplitRows[0], /带时间/);
   assert.match(cursorSplitRows[1], /范围的开场/);
+  assert.doesNotMatch(await page.locator(".current-segment-card").innerText(), /时间重叠|时间无效|单条过长/, "manual split should run the same structure repair path as import and export");
   await page.getByRole("button", { name: "撤销", exact: true }).click();
   await page.waitForFunction(() => document.querySelectorAll(".review-list-row").length === 4);
 
