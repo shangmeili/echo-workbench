@@ -176,6 +176,29 @@ assert.deepEqual(
   ],
 );
 
+const realisticChineseWorkflowRows = normalizeLikeWorkbench(rowsFromAsrResult({
+  segments: [{
+    start: 0,
+    end: 28,
+    text: "今天我们先导入一段会议视频然后等待系统完成转写如果模型返回的内容没有标点也应该自动拆分成适合校对的段落而不是让用户自己处理时间重叠和断句问题",
+  }],
+}, 28));
+assertWorkbenchQuality(realisticChineseWorkflowRows, "realistic Chinese workflow ASR row repair");
+assert.deepEqual(
+  realisticChineseWorkflowRows.map((row) => row.text),
+  [
+    "今天我们先导入一段会议视频",
+    "然后等待系统完成转写",
+    "如果模型返回的内容没有标点",
+    "也应该自动拆分成适合校对的段落",
+    "而不是让用户自己处理时间重叠和断句问题",
+  ],
+);
+assert.ok(
+  realisticChineseWorkflowRows.every((row) => !/(是否|也|才|如果|但是|然后|所以|需要|应该|可以)$/.test(row.text) && !/^候/.test(row.text)),
+  `realistic Chinese workflow rows should not leave dangling helper words: ${realisticChineseWorkflowRows.map((row) => row.text).join(" | ")}`,
+);
+
 const realisticEnglishDialogueRows = normalizeLikeWorkbench(rowsFromAsrResult({
   text: "Previously on The Vampire Diaries You left your son You abandoned your family I was ashamed I had to get out It is beautiful",
 }, 12));

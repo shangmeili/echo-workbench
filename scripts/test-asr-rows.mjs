@@ -158,6 +158,28 @@ assert.deepEqual(
   ],
 );
 
+assert.deepEqual(
+  splitTranscriptIntoSentences("今天我们先导入一段会议视频然后等待系统完成转写如果模型返回的内容没有标点也应该自动拆分成适合校对的段落而不是让用户自己处理时间重叠和断句问题"),
+  [
+    "今天我们先导入一段会议视频",
+    "然后等待系统完成转写",
+    "如果模型返回的内容没有标点",
+    "也应该自动拆分成适合校对的段落",
+    "而不是让用户自己处理时间重叠和断句问题",
+  ],
+);
+
+assert.deepEqual(
+  splitTranscriptIntoSentences("用户看到时间重叠或者单条过长的时候不应该被要求自己修复而是系统在导出前自动整理时间轴和文本结构"),
+  ["用户看到时间重叠或者单条过长的时候", "不应该被要求自己修复", "而是系统在导出前自动整理时间轴和文本结构"],
+);
+
+assert.ok(
+  splitTranscriptIntoSentences("上传视频后系统应该先检查媒体是否可以读取然后再调用转写服务如果服务返回失败页面需要说明具体原因不能只显示开始转写又恢复原状")
+    .every((row) => !/(是否|也|才|如果|但是|然后|所以|需要|应该|可以)$/.test(row) && !/^候/.test(row)),
+  "Chinese subtitle rows should not end on dangling helper words or split protected words",
+);
+
 assert.ok(
   splitTranscriptIntoSentences("this is a long english transcription result without punctuation and it should be split into readable subtitle rows for proofreading")
     .every((row) => !/\b(?:and|or|but|that|which|who|to|of|for|in|on|at|with|from|into|as|by|can|could|should|would|will|may|might|must|shall)$/i.test(row)),
