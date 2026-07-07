@@ -220,15 +220,17 @@ export function repairReviewStructure(inputRows = [], options = {}) {
     ? repairAsrTimeline(readableRepair.rows)
     : repairTimingPressureRows(readableRepair.rows);
   const finalMergedRows = mergeShortAdjacentAsrRows(timedReadableRows, { maxGapSeconds: 0.85, maxCombinedDuration: 5.8 });
-  const timelineRows = repairAsrTimeline(finalMergedRows);
-  const pressureRows = repairAsrTimeline(repairTimingPressureRows(finalMergedRows));
+  const finalReadableRepair = repairReadableReviewRows(finalMergedRows);
+  const timelineRows = repairAsrTimeline(finalReadableRepair.rows);
+  const pressureRows = repairAsrTimeline(repairTimingPressureRows(finalReadableRepair.rows));
   const timelineLastEnd = Math.max(...timelineRows.map((row) => Number(row.end) || 0), 0);
   const pressureLastEnd = Math.max(...pressureRows.map((row) => Number(row.end) || 0), 0);
   const shouldPreserveBoundedTiming = boundedEnd > 0 && timelineLastEnd <= boundedEnd + 0.001 && pressureLastEnd > boundedEnd + 0.001;
   const repairedRows = fitRowsWithinMaxEnd(shouldPreserveBoundedTiming ? timelineRows : pressureRows, options.maxEnd);
-  const mergedRowCount = Math.max(0, timedRows.length + readableRepair.addedRowCount - finalMergedRows.length);
+  const mergedRowCount = Math.max(0, timedRows.length + readableRepair.addedRowCount + finalReadableRepair.addedRowCount - finalReadableRepair.rows.length);
   return {
-    ...readableRepair,
+    splitRowCount: readableRepair.splitRowCount + finalReadableRepair.splitRowCount,
+    addedRowCount: readableRepair.addedRowCount + finalReadableRepair.addedRowCount,
     mergedRowCount,
     rows: normalizeReviewRows(repairedRows),
   };

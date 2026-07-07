@@ -1503,6 +1503,8 @@ try {
   const repairStatus = page.locator(".workbench-quick-state");
   assert.doesNotMatch(await repairStatus.innerText(), /需修复/, "timeline issues should be repaired by the system instead of becoming user-facing export blockers");
   assert.equal(await repairStatus.isEnabled(), false, "timeline-only issues should not expose a manual repair status action");
+  assert.equal(await page.getByRole("button", { name: "跳到下一处质量提示", exact: true }).count(), 0, "repairable structure issues should not appear as user-facing quality prompts");
+  assert.equal(await page.getByRole("button", { name: /拆分 .* 条过长段落/ }).count(), 0, "long subtitle splitting should run automatically instead of becoming a manual repair button");
   const exportButtonAfterTimingIssue = page.locator(".top-export-control .primary");
   assert.match(await exportButtonAfterTimingIssue.innerText(), /导出 TXT/, "top export should remain available because timing issues are automatically repaired");
   assert.match(await exportButtonAfterTimingIssue.locator("svg").getAttribute("class"), /lucide-upload/, "available export action should keep the export arrow icon");

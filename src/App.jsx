@@ -2000,7 +2000,8 @@ function WorkbenchView({ activeTool, onBackHome, rows, setRows, media, setMedia,
     const map = new Map();
     rows.forEach((row, index) => {
       const hints = getSubtitleQualityHints(row, rows[index + 1]);
-      if (hints.length) map.set(row.id, hints);
+      const userActionableHints = hints.filter((hint) => hint === "空文本");
+      if (userActionableHints.length) map.set(row.id, userActionableHints);
     });
     return map;
   }, [rows]);
