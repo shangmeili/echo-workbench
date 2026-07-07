@@ -6,9 +6,10 @@
   "scripts": {
     "dev": "vite --host 127.0.0.1 --port 53815 --configLoader native",
     "setup:riva": "python3.11 -m venv .venv && .venv/bin/python -m pip install -r requirements-asr.txt",
-    "test": "npm run test:export && npm run test:asr && npm run test:asr-language && npm run test:asr-input && npm run test:asr-presets && npm run test:asr-api && npm run test:model-text && npm run test:model-response && npm run test:chat-payload && npm run test:product-copy && npm run test:errors && npm run test:workspace-defaults && npm run test:provider-status && npm run test:provider-key-ui && npm run test:model-cancel-ui && npm run test:workspace && npm run test:workspace-asr-restore && npm run test:video-preview && npm run test:product-flow",
+    "test": "npm run test:export && npm run test:asr && npm run test:transcription-quality && npm run test:asr-language && npm run test:asr-input && npm run test:asr-presets && npm run test:asr-api && npm run test:model-text && npm run test:model-response && npm run test:chat-payload && npm run test:product-copy && npm run test:errors && npm run test:workspace-defaults && npm run test:provider-status && npm run test:provider-key-ui && npm run test:model-cancel-ui && npm run test:workspace && npm run test:workspace-asr-restore && npm run test:video-preview && npm run test:product-flow",
     "test:export": "node scripts/test-export-content.mjs",
     "test:asr": "node scripts/test-asr-rows.mjs",
+    "test:transcription-quality": "node scripts/test-transcription-quality.mjs",
     "test:asr-language": "node scripts/test-asr-language.mjs",
     "test:asr-input": "node scripts/test-asr-input-strategy.mjs",
     "test:asr-presets": "node scripts/test-asr-presets.mjs",
