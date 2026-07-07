@@ -6006,7 +6006,7 @@ export function App() {
     const workspaceProject = await loadWorkspaceProject(projectId);
     if (!isCurrent()) return { stale: true };
     const repairedProjectRows = Array.isArray(workspaceProject.rows)
-      ? repairReadableReviewRows(workspaceProject.rows)
+      ? repairReadableReviewRows(repairAsrTimeline(workspaceProject.rows))
       : { rows: [], splitRowCount: 0, addedRowCount: 0 };
     const recent = {
       ...(fallbackItem || {}),

@@ -26,7 +26,7 @@ export function splitTranscriptIntoSentences(text) {
 
 function mergeAbbreviationChunks(chunks) {
   const result = [];
-  const abbreviationPattern = /\b(?:Mr|Mrs|Ms|Dr|Prof|Sr|Jr|St|vs|etc)\.$/i;
+  const abbreviationPattern = /(?:\b(?:Mr|Mrs|Ms|Dr|Prof|Sr|Jr|St|vs|etc|e\.g|i\.e)\.|(?:\b[A-Z]\.){2,})$/i;
   for (const chunk of chunks) {
     if (result.length && abbreviationPattern.test(result.at(-1))) {
       result[result.length - 1] = `${result.at(-1)} ${chunk}`;

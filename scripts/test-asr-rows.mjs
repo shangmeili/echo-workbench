@@ -31,6 +31,16 @@ assert.deepEqual(
   ["Dr. Smith reviewed the audio.", "The result is usable."],
 );
 
+assert.deepEqual(
+  splitTranscriptIntoSentences("The U.S. Army reviewed the audio. The result is usable."),
+  ["The U.S. Army reviewed the audio.", "The result is usable."],
+);
+
+assert.deepEqual(
+  splitTranscriptIntoSentences("Use e.g. speaker names and product names. The subtitle stays readable."),
+  ["Use e.g. speaker names and product names.", "The subtitle stays readable."],
+);
+
 assert.equal(joinAsrTokens([
   { word: "Hello" },
   { word: "world" },
