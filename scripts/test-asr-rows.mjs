@@ -27,6 +27,31 @@ assert.deepEqual(
 );
 
 assert.deepEqual(
+  splitTranscriptIntoSentences("哇我听够了我以为我们只能给 Kade 最糟糕的最糟糕的就像这个人 Kade 可以有他这些都是我的你在做什么在跟想吗这叫自我控制 Damon"),
+  [
+    "哇我听够了",
+    "我以为我们只能给 Kade",
+    "最糟糕的最糟糕的就像这个人 Kade",
+    "可以有他",
+    "这些都是我的你在做什么",
+    "在跟想吗",
+    "这叫自我控制",
+    "Damon",
+  ],
+);
+
+assert.deepEqual(
+  splitTranscriptIntoSentences("之前在鬼魂笔记中是的我会想她死而不是我如果 Meg 和 Elizabeth 都死了你会想要活着吗我希望活着我不在乎任何人的事"),
+  [
+    "之前在鬼魂笔记中是的",
+    "我会想她死而不是我",
+    "如果 Meg 和 Elizabeth 都死了",
+    "你会想要活着吗",
+    "我希望活着我不在乎任何人的事",
+  ],
+);
+
+assert.deepEqual(
   splitTranscriptIntoSentences("我知道 你不相信我 但是 我们现在必须离开这里 否则 就来不及了"),
   ["我知道你不相信我", "但是我们现在必须离开这里", "否则就来不及了"],
 );
@@ -69,6 +94,16 @@ assert.deepEqual(
 assert.deepEqual(
   splitTranscriptIntoSentences("I can become the Ripper that you want You would turn your humanity off For a short time yes"),
   ["I can become the Ripper that you want", "You would turn your humanity off", "For a short time yes"],
+);
+
+assert.deepEqual(
+  splitTranscriptIntoSentences("I can become the Ripper that you want you would turn your humanity off for a short time yes I predict that when it is over you let me and my brother go"),
+  [
+    "I can become the Ripper that you want",
+    "you would turn your humanity off for a short time yes",
+    "I predict that when it is over",
+    "you let me and my brother go",
+  ],
 );
 
 assert.deepEqual(
@@ -356,6 +391,31 @@ assert.match(phraseSpacedRows.map((row) => row.text).join("|"), /之前在《鬼
 assert.match(phraseSpacedRows.map((row) => row.text).join("|"), /如果 Meg 和 Elizabeth 都死了/);
 assert.ok(phraseSpacedRows.some((row) => row.text === "你会想要活着吗"));
 assert.ok(phraseSpacedRows.some((row) => row.text === "我希望活着"));
+
+const unpunctuatedDialogueRows = rowsFromAsrResult({
+  segments: [{
+    start: 0,
+    end: 30,
+    text: "哇我听够了我以为我们只能给 Kade 最糟糕的最糟糕的就像这个人 Kade 可以有他这些都是我的你在做什么在跟想吗这叫自我控制 Damon",
+  }],
+}, 30);
+assert.deepEqual(
+  unpunctuatedDialogueRows.map((row) => row.text),
+  [
+    "哇我听够了",
+    "我以为我们只能给 Kade",
+    "最糟糕的最糟糕的就像这个人 Kade",
+    "可以有他",
+    "这些都是我的你在做什么",
+    "在跟想吗",
+    "这叫自我控制",
+    "Damon",
+  ],
+);
+assert.ok(
+  unpunctuatedDialogueRows.every((row) => transcriptWeight(row.text) <= 16),
+  `unpunctuated dialogue rows should stay readable, got ${unpunctuatedDialogueRows.map((row) => row.text).join(" | ")}`,
+);
 
 const overlappingRows = rowsFromAsrResult({
   segments: [

@@ -5,6 +5,7 @@ export function splitTranscriptIntoSentences(text) {
   const clean = normalizeAsrText(text)
     .replace(/\r/g, "")
     .replace(/[ \t]+/g, " ")
+    .replace(/(而不是我)(?=(如果|但是|可是|不过|然后|所以|你会|我会|我们|他们|这些|那些))/g, "$1\n")
     .replace(/\n{2,}/g, "\n")
     .trim();
   if (!clean) return [];
@@ -26,7 +27,7 @@ const phraseBreakBeforePatterns = [
   "同时", "并且", "以及", "为了", "接着", "另外", "最后",
   "需要", "应该", "可以", "可能", "其实", "就是", "就像", "那么", "总之", "换句话说",
   "是的", "不是",
-  "你会", "我会", "我们", "他们", "她们", "它们", "这个", "那个", "这里", "那里",
+  "你会", "我会", "我们", "他们", "她们", "它们", "这个", "那个", "这些", "那些", "这里", "那里",
   "我知道", "我觉得", "我以为", "我想", "我要", "我不", "我希望", "我们先", "我们现在",
   "你知道", "你觉得", "你想", "你要", "你不", "你先", "他是", "她是", "是不是",
 ];
@@ -40,8 +41,8 @@ const phraseStrongBreakBeforePatterns = new Set([
 ]);
 
 const phraseBreakAfterPatterns = [
-  "等一下", "等一等", "没关系", "是的", "不是", "好了", "对吧", "好吗", "知道了",
-  "吗", "呢", "吧",
+  "等一下", "等一等", "没关系", "是的", "不是", "好了", "够了", "死了", "完了", "对吧", "好吗", "知道了",
+  "吗", "呢", "吧", "什么",
 ];
 
 function startsWithPattern(text, patterns) {
@@ -71,7 +72,7 @@ function splitPhraseSpacedLine(line) {
     .split(/[ \t]+/)
     .map((item) => normalizeAsrText(item))
     .filter(Boolean);
-  if (chunks.length < 3) return [];
+  if (chunks.length < 6) return [];
 
   const rows = [];
   let current = "";
@@ -207,10 +208,12 @@ function splitEnglishImplicitSentenceBoundaries(value) {
     const currentClean = cleanEnglishWord(word);
     const previousClean = cleanEnglishWord(words[index - 1]);
     const remainingWords = words.length - index;
+    const likelySentenceStart = isCapitalizedEnglishToken(word) || (current.length >= 5 && englishSentenceStartWords.has(currentClean));
     const shouldSplit = current.length >= 3
       && remainingWords >= 2
       && englishSentenceStartWords.has(currentClean)
-      && isCapitalizedEnglishToken(word)
+      && likelySentenceStart
+      && (isCapitalizedEnglishToken(word) || currentClean === "and" || !englishWeakEndingWords.has(currentClean))
       && !englishWeakEndingWords.has(previousClean);
 
     if (shouldSplit) {
@@ -255,6 +258,8 @@ function chooseReadableEnglishSplitIndex(words, maxWords) {
     let score = Math.abs(index - target);
     if (/[,.!?;:]$/.test(before)) score -= 7;
     if (englishBreakBeforeWords.has(currentClean)) score -= 4;
+    if (currentClean === "and" && tailWords <= 5) score += 10;
+    if (englishWeakEndingWords.has(currentClean)) score += 10;
     if (englishWeakEndingWords.has(beforeClean)) score += 8;
     if (tailWords < 4) score += 6;
     candidates.push({ index, score });
@@ -267,7 +272,7 @@ function chooseReadableEnglishSplitIndex(words, maxWords) {
 function splitCjkImplicitSentenceBoundaries(text) {
   const value = String(text || "").trim();
   if (!/[\u4e00-\u9fa5]/.test(value) || /[。！？!?；;，,、：:]/.test(value)) return [value].filter(Boolean);
-  const boundaryPattern = /(吗|呢|吧|好了|知道了|没关系|不是|是的)(?=(我|你|他|她|它|我们|你们|他们|她们|这个|那个|这里|那里|但是|可是|不过|然后|所以|如果|否则|因为|同时|另外|最后|接着))/g;
+  const boundaryPattern = /(吗|呢|吧|好了|够了|死了|完了|什么|知道了|没关系|是的)(?=(我|你|他|她|它|我们|你们|他们|她们|这个|那个|这些|那些|这里|那里|这叫|但是|可是|不过|然后|所以|如果|否则|因为|同时|另外|最后|接着|欢迎|现在|在))/g;
   const boundaryIndexes = [];
   let match;
   while ((match = boundaryPattern.exec(value)) !== null) {
@@ -275,6 +280,27 @@ function splitCjkImplicitSentenceBoundaries(text) {
     const before = value.slice(0, splitIndex).trim();
     const after = value.slice(splitIndex).trim();
     if (transcriptWeight(before) >= 3 && transcriptWeight(after) >= 3) {
+      boundaryIndexes.push(splitIndex);
+    }
+  }
+  const implicitStandaloneStartPatterns = ["这些", "那些", "这叫", "欢迎", "你好"];
+  for (const pattern of implicitStandaloneStartPatterns) {
+    let index = value.indexOf(pattern);
+    while (index > 0) {
+      const before = value.slice(0, index).trim();
+      const after = value.slice(index).trim();
+      if (transcriptWeight(before) >= 4 && transcriptWeight(after) >= 4) {
+        boundaryIndexes.push(index);
+      }
+      index = value.indexOf(pattern, index + pattern.length);
+    }
+  }
+  const contrastBoundaryPattern = /(而不是我)(?=(如果|但是|可是|不过|然后|所以|你会|我会|我们|他们|这些|那些))/g;
+  while ((match = contrastBoundaryPattern.exec(value)) !== null) {
+    const splitIndex = match.index + match[1].length;
+    const before = value.slice(0, splitIndex).trim();
+    const after = value.slice(splitIndex).trim();
+    if (transcriptWeight(before) >= 5 && transcriptWeight(after) >= 3) {
       boundaryIndexes.push(splitIndex);
     }
   }
