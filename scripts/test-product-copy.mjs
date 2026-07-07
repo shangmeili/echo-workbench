@@ -25,6 +25,8 @@ assert.doesNotMatch(readme, /已补充的音频|补充独立音频/, "README sho
 assert.doesNotMatch(appSource, /文本模型待验证/, "configured text model state should not imply verification blocks proofreading or export");
 assert.match(appSource, /文本模型已配置/, "configured but untested text model state should be worded as configured");
 assert.doesNotMatch(appSource, /转写已验|文本已配|转写已配/, "result-state model badges should avoid abbreviated status labels");
+assert.doesNotMatch(appSource, /时间轴已按文本自动分段，请校对/, "untimed ASR success copy should not push system-generated timing responsibility to the user");
+assert.match(appSource, /系统已按文本自动生成时间轴/, "untimed ASR success copy should describe the automatic timing repair");
 
 assert.match(readme, /MiniMax-M3 在本项目中用于文本处理，不作为 ASR 转写模型。/);
 assert.match(readme, /默认按百炼 Fun-ASR 中国区接口提交原始音视频/);
