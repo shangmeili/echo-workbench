@@ -90,22 +90,11 @@ function splitCjkTextByReadableLength(value, maxUnits) {
   const clean = String(value || "").trim();
   if (!clean) return [];
   const result = [];
-  const softBreakPatterns = ["需要", "应该", "可以", "然后", "所以", "但是", "因为", "如果", "同时", "并且", "以及", "为了"];
   let remaining = clean;
   while (transcriptWeight(remaining) > maxUnits) {
-    const minimum = Math.max(8, Math.floor(maxUnits * 0.62));
-    if (transcriptWeight(remaining) <= maxUnits + 4) break;
-    let splitIndex = -1;
-    for (const pattern of softBreakPatterns) {
-      const index = remaining.lastIndexOf(pattern, maxUnits);
-      if (index >= minimum) {
-        splitIndex = index;
-        break;
-      }
-    }
-    if (splitIndex < minimum) {
-      splitIndex = maxUnits;
-    }
+    const minimum = Math.max(6, Math.floor(maxUnits * 0.45));
+    if (transcriptWeight(remaining) <= maxUnits + 1) break;
+    const splitIndex = chooseReadableCjkSplitIndex(remaining, maxUnits, minimum);
     const tailLength = transcriptWeight(remaining.slice(splitIndex).trim());
     if (tailLength > 0 && tailLength < 5 && transcriptWeight(remaining) <= maxUnits + tailLength) break;
     const part = remaining.slice(0, splitIndex).trim();
@@ -114,6 +103,70 @@ function splitCjkTextByReadableLength(value, maxUnits) {
   }
   if (remaining) result.push(remaining);
   return result;
+}
+
+function chooseReadableCjkSplitIndex(value, maxUnits, minimumUnits) {
+  const softBreakBeforePatterns = [
+    "然后", "所以", "但是", "不过", "可是", "因为", "如果", "同时", "并且", "以及", "为了",
+    "需要", "应该", "可以", "可能", "其实", "就是", "就像", "那么", "总之",
+    "你会", "我会", "我们", "他们", "她们", "它们", "这个", "那个", "这里", "那里",
+  ];
+  const strongBreakPatterns = new Set([
+    "然后", "所以", "但是", "不过", "可是", "因为", "如果", "同时", "并且", "以及", "为了",
+    "需要", "应该", "可以", "可能", "其实", "就是", "就像", "那么", "总之", "你会", "我会",
+  ]);
+  const candidates = [];
+  const addCandidate = (index, weight = 1, minUnits = minimumUnits) => {
+    if (index <= 0 || index >= value.length) return;
+    const beforeUnits = transcriptWeight(value.slice(0, index).trim());
+    const afterUnits = transcriptWeight(value.slice(index).trim());
+    if (beforeUnits < minUnits || afterUnits < 4) return;
+    if (beforeUnits > maxUnits + 4) return;
+    const target = Math.max(minimumUnits, maxUnits * 0.68);
+    candidates.push({ index, score: Math.abs(beforeUnits - target) - weight });
+  };
+
+  for (const pattern of softBreakBeforePatterns) {
+    let index = value.indexOf(pattern);
+    while (index > 0) {
+      const isStrongBreak = strongBreakPatterns.has(pattern);
+      addCandidate(index, isStrongBreak ? 7 : 1.5, isStrongBreak ? Math.max(4, minimumUnits - 2) : minimumUnits);
+      index = value.indexOf(pattern, index + pattern.length);
+    }
+  }
+
+  for (let index = 1; index < value.length; index += 1) {
+    if (/[，,、：:]/.test(value[index - 1])) addCandidate(index, 3);
+  }
+
+  if (candidates.length) {
+    candidates.sort((left, right) => left.score - right.score);
+    return candidates[0].index;
+  }
+
+  return chooseHardSplitIndex(value, maxUnits, minimumUnits);
+}
+
+function chooseHardSplitIndex(value, maxUnits, minimumUnits) {
+  let splitIndex = -1;
+  for (let index = 1; index < value.length; index += 1) {
+    if (transcriptWeight(value.slice(0, index).trim()) <= maxUnits) {
+      splitIndex = index;
+      continue;
+    }
+    break;
+  }
+  if (splitIndex < 0) return Math.min(value.length - 1, Math.max(1, maxUnits));
+  const originalSplit = splitIndex;
+  while (
+    splitIndex > 1
+    && /[A-Za-z0-9]/.test(value[splitIndex - 1] || "")
+    && /[A-Za-z0-9]/.test(value[splitIndex] || "")
+  ) {
+    splitIndex -= 1;
+  }
+  if (transcriptWeight(value.slice(0, splitIndex).trim()) < minimumUnits) return originalSplit;
+  return splitIndex;
 }
 
 export function transcriptWeight(text) {

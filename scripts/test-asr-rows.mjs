@@ -17,6 +17,16 @@ assert.deepEqual(
 );
 
 assert.deepEqual(
+  splitTranscriptIntoSentences("我们先看整体结论然后再处理细节如果还有问题继续复核。"),
+  ["我们先看整体结论", "然后再处理细节", "如果还有问题继续复核。"],
+);
+
+assert.deepEqual(
+  splitTranscriptIntoSentences("我以为我们只能给 Kade 最糟糕的最糟糕的就像这个人 Kade 可以有他在这里继续补充后面的长句。"),
+  ["我以为我们只能给 Kade 最糟糕的最糟糕的", "就像这个人 Kade", "可以有他在这里继续补充后面的长句。"],
+);
+
+assert.deepEqual(
   splitTranscriptIntoSentences("this is a long english transcription result without punctuation and it should be split into readable subtitle rows for proofreading"),
   ["this is a long english transcription result without punctuation and", "it should be split into readable subtitle rows for proofreading"],
 );
