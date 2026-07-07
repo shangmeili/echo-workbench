@@ -5,13 +5,14 @@ import { tmpdir } from "node:os";
 import { basename, extname, join } from "node:path";
 import { spawn } from "node:child_process";
 import { detectTranscriptionQualityIssue, rowsFromAsrResult, transcriptWeight } from "../src/asrRows.js";
+import { getSubtitleQualityHints, repairReviewStructure, repairReviewStructurePreservingEmpty } from "../src/reviewRows.js";
 
 function usage() {
   return [
     "Usage:",
     "  ASR_API_KEY=... npm run test:asr-live -- --file /path/to/sample.wav [--expect 关键词]",
     "  DASHSCOPE_API_KEY=... npm run test:asr-live -- --file /path/to/sample.mp4 --duration 120 --min-rows 4 --min-chars 80",
-    "  DASHSCOPE_API_KEY=... npm run test:asr-live -- --generate-sample --expect 回响工作台",
+    "  DASHSCOPE_API_KEY=... npm run test:asr-live -- --generate-sample --sample-profile zh --expect 回响工作台",
     "",
     "Options:",
     "  --file <path>          Required. Real audio/video sample to transcribe.",
@@ -25,6 +26,7 @@ function usage() {
     "  --min-rows <number>    Optional. Minimum editable rows after normalization. Default: 1.",
     "  --min-chars <number>   Optional. Minimum transcript weight. Default: 1.",
     "  --generate-sample      Optional. Generate a short local speech sample with macOS say when --file is omitted.",
+    "  --sample-profile <name> Optional. zh | en. Defaults to zh for DashScope and en for NVIDIA Riva.",
     "  --sample-text <text>   Optional. Text for --generate-sample. Default includes 回响工作台.",
     "  --sample-voice <name>  Optional. macOS say voice name.",
     "  --help                 Show this message.",
@@ -44,6 +46,7 @@ function parseArgs(argv) {
     "min-rows": "1",
     "min-chars": "1",
     "generate-sample": false,
+    "sample-profile": "",
     "sample-text": "回响工作台转写测试。视频智能字幕，音频转写，字幕文件翻译。",
     "sample-voice": "",
     help: false,
@@ -172,6 +175,37 @@ function sourceLanguageLabel(languageCode) {
   return "自动识别";
 }
 
+function defaultSampleProfile(args) {
+  if (args["sample-profile"]) return args["sample-profile"];
+  return args.transport === "nvidia-riva-grpc" ? "en" : "zh";
+}
+
+function applySampleProfile(args) {
+  const profile = defaultSampleProfile(args);
+  if (profile === "en") {
+    if (!args["sample-text"] || args["sample-text"] === "回响工作台转写测试。视频智能字幕，音频转写，字幕文件翻译。") {
+      args["sample-text"] = "Echo workbench transcription test. This is a stable audio transcription sample.";
+    }
+    if (!args["sample-voice"]) args["sample-voice"] = "Samantha";
+    if (args.language === "zh") args.language = "en";
+    if (!args.expect) args.expect = "transcription";
+    return;
+  }
+  if (profile !== "zh") throw new Error(`Unknown sample profile: ${profile}`);
+  if (!args["sample-voice"]) args["sample-voice"] = "Tingting";
+  if (!args.expect) args.expect = "回响工作台";
+}
+
+function assertWorkbenchRows(rows, label) {
+  assert.ok(rows.length > 0, `${label}: no editable rows after workbench repair`);
+  rows.forEach((row, index) => {
+    const hints = getSubtitleQualityHints(row, rows[index + 1]).filter((hint) => hint !== "阅读过快" && hint !== "时长过短");
+    assert.deepEqual(hints, [], `${label}: row ${index + 1} still has structural quality hints: ${hints.join("、")} / ${row.text}`);
+  });
+  const secondPass = repairReviewStructure(rows).rows;
+  assert.equal(secondPass.length, rows.length, `${label}: rows still contain mergeable fragments after repair`);
+}
+
 function providerEnvKeyNames({ transport, endpoint }) {
   const target = String(endpoint || "").toLowerCase();
   const names = ["ASR_API_KEY"];
@@ -208,6 +242,7 @@ const stderrRef = { value: "" };
 
 try {
   if (!args.file && args["generate-sample"]) {
+    applySampleProfile(args);
     generatedSampleDir = await mkdtemp(join(tmpdir(), "echo-live-asr-sample-"));
     args.file = await generateSpeechSample({
       outputPath: join(generatedSampleDir, "echo-live-asr-sample.m4a"),
@@ -268,21 +303,29 @@ try {
   assertExpectedText(transcript, args.expect);
   const duration = Number(args.duration) || 0;
   const rows = rowsFromAsrResult(data, duration);
+  const repair = repairReviewStructurePreservingEmpty(rows);
+  const workbenchRows = repair.rows;
   const minRows = positiveNumber(args["min-rows"], 1);
   const minChars = positiveNumber(args["min-chars"], 1);
-  assert.ok(rows.length >= minRows, `live ASR produced too few editable rows: ${rows.length}`);
-  const totalWeight = transcriptWeight(rows.map((row) => row.text).join(""));
+  assert.ok(workbenchRows.length >= minRows, `live ASR produced too few editable rows after workbench repair: ${workbenchRows.length}`);
+  const totalWeight = transcriptWeight(workbenchRows.map((row) => row.text).join(""));
   assert.ok(totalWeight >= minChars, `live ASR transcript is too short: ${totalWeight}`);
-  const qualityIssue = detectTranscriptionQualityIssue(rows, sourceLanguageLabel(args.language), duration);
+  const qualityIssue = detectTranscriptionQualityIssue(workbenchRows, sourceLanguageLabel(args.language), duration);
   assert.equal(qualityIssue, "", qualityIssue);
+  assertWorkbenchRows(workbenchRows, "live ASR workbench rows");
 
   console.log(JSON.stringify({
     ok: true,
     provider: data.provider || args.transport,
     sampleFile: generatedSampleDir ? "generated" : "provided",
     transcriptPreview: transcript.slice(0, 500),
-    editableRowCount: rows.length,
+    editableRowCount: workbenchRows.length,
     transcriptWeight: totalWeight,
+    repaired: {
+      splitRowCount: repair.splitRowCount,
+      mergedRowCount: repair.mergedRowCount,
+      addedRowCount: repair.addedRowCount,
+    },
     segmentCount: Array.isArray(data.segments) ? data.segments.length : 0,
     wordCount: Array.isArray(data.words) ? data.words.length : 0,
   }, null, 2));
