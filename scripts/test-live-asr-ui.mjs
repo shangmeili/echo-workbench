@@ -156,6 +156,13 @@ async function verifySuccessfulTranscription(page, baseUrl, samplePath) {
   if (errorCard) throw new Error(await page.locator(".transcription-status-card.error").innerText());
   const tableText = await page.locator(".subtitle-table").innerText();
   assert.match(tableText.toLowerCase(), /echo workbench|transcription test|stable audio/);
+  const reviewRows = await page.locator(".subtitle-table .table-row:not(.table-head)").count();
+  assert.ok(reviewRows >= 2, `live ASR result should be split into reviewable rows, got ${reviewRows}: ${tableText}`);
+  assert.doesNotMatch(
+    await page.locator(".subtitle-editor").innerText(),
+    /时间重叠|时间无效|单条过长|阅读过快|时长过短|下一处提示|拆分长段/,
+    "live ASR result should not expose repairable structure issues as user-facing proofreading prompts",
+  );
   const maxEnd = maxSubtitleEndSeconds(tableText);
   assert.ok(maxEnd > 0, `transcription table should expose subtitle timecodes: ${tableText}`);
   assert.ok(maxEnd < 12, `short live-ASR sample should not be stretched across the media fallback duration, got ${maxEnd}s`);
