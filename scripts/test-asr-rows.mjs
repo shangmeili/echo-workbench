@@ -42,6 +42,16 @@ assert.deepEqual(
 );
 
 assert.deepEqual(
+  splitTranscriptIntoSentences("如果还有问题继续复核不要把错误交给用户解决"),
+  ["如果还有问题继续复核", "不要把错误交给用户解决"],
+);
+
+assert.deepEqual(
+  splitTranscriptIntoSentences("我们先看整体结论然后再处理细节如果还有问题继续复核不要把这种错误作为提示交给用户解决而是作为功能问题解决。"),
+  ["我们先看整体结论", "然后再处理细节", "如果还有问题继续复核", "不要把这种错误作为提示交给用户解决", "而是作为功能问题解决。"],
+);
+
+assert.deepEqual(
   splitTranscriptIntoSentences("是这样如果源语言是英文目标语言是中文翻译才是附加功能"),
   ["是这样如果源语言是英文", "目标语言是中文", "翻译才是附加功能"],
 );

@@ -26,6 +26,7 @@ const phraseBreakBeforePatterns = [
   "然后", "所以", "但是", "不过", "可是", "因为", "如果", "否则", "虽然", "只是",
   "同时", "并且", "以及", "为了", "接着", "另外", "最后", "首先", "为什么",
   "需要", "应该", "可以", "可能", "其实", "就是", "就像", "那么", "总之", "换句话说",
+  "不要", "不应该", "交给",
   "好的", "而是", "而不是", "也要", "系统", "这部分", "源语言", "目标语言", "翻译", "校对窗口", "按钮",
   "是的", "不是",
   "你会", "我会", "我们", "他们", "她们", "它们", "这个", "那个", "这些", "那些", "这里", "那里",
@@ -38,6 +39,7 @@ const phraseStrongBreakBeforePatterns = new Set([
   "然后", "所以", "但是", "不过", "可是", "因为", "如果", "否则", "虽然", "只是",
   "同时", "并且", "以及", "为了", "接着", "另外", "最后", "首先", "为什么",
   "需要", "应该", "可以", "可能", "其实", "就是", "就像", "那么", "总之", "换句话说",
+  "不要", "不应该", "交给",
   "好的", "而是", "而不是", "也要", "系统", "这部分", "源语言", "目标语言", "翻译", "校对窗口", "按钮",
   "是的", "不是", "你会", "我会", "我知道", "我觉得", "我以为", "我想", "我要", "我不", "我希望",
   "你知道", "你觉得", "你想", "你要", "你不", "是不是",
@@ -51,6 +53,7 @@ const phraseBreakAfterPatterns = [
 const protectedCjkSplitPairs = new Set([
   "不是", "应该", "可以", "可能", "需要", "目标", "语言", "中文", "英文", "翻译", "字幕", "转写", "校对",
   "尽量", "按钮", "用户", "系统", "模型", "配置", "视频", "音频", "时间", "重叠", "导出", "处理", "修复",
+  "这种", "错误", "交给",
 ]);
 
 function startsWithPattern(text, patterns) {
@@ -65,6 +68,7 @@ function isProtectedCjkPatternBoundary(value, index, pattern) {
   const text = String(value || "");
   if (pattern === "不是" && text.slice(index - 1, index + pattern.length) === "是不是") return true;
   if (pattern === "不是" && text[index - 1] === "而") return true;
+  if (pattern === "不要" && text[index - 1] === "先") return true;
   if (pattern === "应该" && text[index - 1] === "不") return true;
   if (pattern === "可以" && text[index - 1] === "不") return true;
   return false;
@@ -317,7 +321,8 @@ function chooseReadableEnglishSplitIndex(words, maxWords) {
 
 function splitCjkImplicitSentenceBoundaries(text) {
   const value = String(text || "").trim();
-  if (!/[\u4e00-\u9fa5]/.test(value) || /[。！？!?；;，,、：:]/.test(value)) return [value].filter(Boolean);
+  const innerValue = value.replace(/[。！？!?；;]+$/g, "");
+  if (!/[\u4e00-\u9fa5]/.test(value) || /[。！？!?；;，,、：:]/.test(innerValue)) return [value].filter(Boolean);
   const boundaryPattern = /(吗|呢|吧|好了|够了|死了|完了|什么|知道了|没关系|是的)(?=(我|你|他|她|它|我们|你们|他们|她们|这个|那个|这些|那些|这里|那里|这叫|但是|可是|不过|然后|所以|如果|否则|因为|同时|另外|最后|接着|欢迎|现在|在))/g;
   const boundaryIndexes = [];
   let match;

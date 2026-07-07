@@ -144,9 +144,11 @@ function mergeTimingPressureAdjacentRows(inputRows = []) {
       continue;
     }
     const gap = Number(row.start) - Number(previous.end);
+    const combinedText = joinReviewText(previous.text, row.text);
     const shouldMerge = hasTimingPressure(previous, row)
       && gap <= 0.35
       && !reviewSentenceClosed(previous.text)
+      && splitTranscriptIntoSentences(combinedText).length <= 1
       && String(previous.speaker || "未标注") === String(row.speaker || "未标注");
     if (!shouldMerge) {
       result.push(row);
@@ -155,7 +157,7 @@ function mergeTimingPressureAdjacentRows(inputRows = []) {
     result[result.length - 1] = {
       ...previous,
       end: Math.max(Number(previous.end) || 0, Number(row.end) || 0),
-      text: joinReviewText(previous.text, row.text),
+      text: combinedText,
       originalText: joinReviewText(previous.originalText || previous.text, row.originalText || row.text),
       translation: joinReviewText(previous.translation, row.translation),
       reviewStatus: previous.reviewStatus === "confirmed" ? "pending" : previous.reviewStatus,

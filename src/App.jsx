@@ -2043,7 +2043,7 @@ function WorkbenchView({ activeTool, onBackHome, rows, setRows, media, setMedia,
   const needsTranslationAttention = Boolean(rows.length && showTranslationColumn && missingTranslationCount);
   const needsExportRepair = Boolean(rows.length && exportBlockerCount);
   const quickStateLabel = needsExportRepair
-    ? `需修复 ${exportBlockerCount} 条`
+    ? `缺原文 ${exportBlockerCount} 条`
     : !translationExportAvailable
       ? "原文"
       : translationComplete
@@ -3751,10 +3751,10 @@ ${JSON.stringify(chunk.map((row) => ({ id: row.id, start: row.start, end: row.en
                 disabled={!needsExportRepair}
                 aria-label={
                   needsExportRepair
-                    ? `${rows.length} 条${segmentKind}段落，${exportBlockerCount} 条需修复，点击定位`
+                    ? `${rows.length} 条${segmentKind}段落，${exportBlockerCount} 条缺少原文，点击定位`
                     : `${rows.length} 条${segmentKind}段落，${quickStateLabel}`
                 }
-                title={needsExportRepair ? "跳转到第一条导出前必须修复的问题" : quickStateLabel}
+                title={needsExportRepair ? "跳转到第一条缺少原文的段落" : quickStateLabel}
               >
                 <span>{rows.length} 条{segmentKind}段落</span>
                 <strong>{quickStateLabel}</strong>

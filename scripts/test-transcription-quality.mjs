@@ -106,6 +106,21 @@ const longChineseRows = normalizeLikeWorkbench(rowsFromAsrResult({
 }, 16));
 assert.ok(longChineseRows.length >= 4, "long Chinese ASR rows should be split into multiple proofreading rows");
 assertWorkbenchQuality(longChineseRows, "long Chinese ASR row repair");
+assert.ok(
+  longChineseRows.every((row) => !/交$/.test(row.text) && !/^给用户/.test(row.text)),
+  `long Chinese ASR repair should not split inside the phrase 交给用户: ${longChineseRows.map((row) => row.text).join(" | ")}`,
+);
+
+const mergedThenReadableRows = normalizeLikeWorkbench([
+  { id: "a", start: 0, end: 0.8, speaker: "未标注", text: "我们先看整体结论", translation: "" },
+  { id: "b", start: 0.85, end: 1.5, speaker: "未标注", text: "然后再处理细节如果还有问题继续复核", translation: "" },
+  { id: "c", start: 1.55, end: 2.1, speaker: "未标注", text: "不要把错误交给用户解决", translation: "" },
+]);
+assertWorkbenchQuality(mergedThenReadableRows, "merged fragment readability repair");
+assert.ok(
+  mergedThenReadableRows.every((row) => !/交$/.test(row.text) && !/^给用户/.test(row.text)),
+  `merged fragment readability repair should keep semantic phrases intact: ${mergedThenReadableRows.map((row) => row.text).join(" | ")}`,
+);
 
 const realisticProductSpeechRows = normalizeLikeWorkbench(rowsFromAsrResult({
   segments: [{
