@@ -83,6 +83,33 @@ assert.deepEqual(
   ],
 );
 
+const englishWordRows = groupWordsToRows([
+  { word: "You", start: 0, end: 0.2 },
+  { word: "left", start: 0.2, end: 0.5 },
+  { word: "your", start: 0.5, end: 0.7 },
+  { word: "son.", start: 0.7, end: 1 },
+  { word: "You", start: 1.1, end: 1.3 },
+  { word: "abandoned", start: 1.3, end: 1.8 },
+  { word: "your", start: 1.8, end: 2 },
+  { word: "family.", start: 2, end: 2.4 },
+]);
+
+assert.deepEqual(
+  englishWordRows.map((row) => ({ start: row.start, end: row.end, text: row.text })),
+  [
+    { start: 0, end: 1, text: "You left your son." },
+    { start: 1.1, end: 2.4, text: "You abandoned your family." },
+  ],
+);
+
+const abbreviationWordRows = groupWordsToRows([
+  { word: "Dr.", start: 0, end: 0.25 },
+  { word: "Smith", start: 0.25, end: 0.6 },
+  { word: "arrived.", start: 0.6, end: 1 },
+]);
+
+assert.deepEqual(abbreviationWordRows.map((row) => row.text), ["Dr. Smith arrived."]);
+
 const segmentRows = rowsFromAsrResult({
   segments: [
     { start_time: 0, end_time: 2.4, speaker_label: "S1", transcript: "第一段转写" },

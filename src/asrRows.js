@@ -24,11 +24,16 @@ export function splitTranscriptIntoSentences(text) {
   return splitCjkTextByReadableLength(clean, maxChars);
 }
 
+const abbreviationBoundaryPattern = /(?:\b(?:Mr|Mrs|Ms|Dr|Prof|Sr|Jr|St|vs|etc|e\.g|i\.e)\.|(?:\b[A-Z]\.){2,})$/i;
+
+function endsWithProtectedAbbreviation(text) {
+  return abbreviationBoundaryPattern.test(String(text || "").trim());
+}
+
 function mergeAbbreviationChunks(chunks) {
   const result = [];
-  const abbreviationPattern = /(?:\b(?:Mr|Mrs|Ms|Dr|Prof|Sr|Jr|St|vs|etc|e\.g|i\.e)\.|(?:\b[A-Z]\.){2,})$/i;
   for (const chunk of chunks) {
-    if (result.length && abbreviationPattern.test(result.at(-1))) {
+    if (result.length && endsWithProtectedAbbreviation(result.at(-1))) {
       result[result.length - 1] = `${result.at(-1)} ${chunk}`;
       continue;
     }
@@ -201,7 +206,8 @@ export function groupWordsToRows(words) {
     const text = joinAsrTokens(group);
     const duration = wordEnd(group.at(-1)) - wordStart(group[0]);
     const units = transcriptWeight(text);
-    if (/[。！？!?；;]$/.test(wordText(word)) || units >= maxMergedUnits(text) || duration >= 4.8) flush();
+    const sentenceBoundary = isSentenceClosed(text) && !endsWithProtectedAbbreviation(text);
+    if (sentenceBoundary || units >= maxMergedUnits(text) || duration >= 4.8) flush();
   });
   flush();
   return rows;

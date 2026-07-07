@@ -1465,7 +1465,8 @@ try {
   await page.waitForFunction(() => document.querySelector(".replace-import-confirm")?.textContent.includes("3 条"));
   await page.getByRole("button", { name: "确认替换", exact: true }).click();
   await page.waitForFunction(() => document.querySelectorAll(".review-list-row").length === 3);
-  assert.match(await page.locator(".current-segment-card").innerText(), /时长过短|阅读过快|时间重叠/);
+  assert.match(await page.locator(".current-segment-card").innerText(), /时长过短|阅读过快/);
+  assert.doesNotMatch(await page.locator(".current-segment-card").innerText(), /时间重叠|时间无效/, "imported risky timelines should be normalized before entering proofreading");
   assert.equal(await page.locator(".current-segment-card .split-row").isDisabled(), true, "sub-frame risky segments should not allow another split that would create invalid timecodes");
   assert.match(await page.locator(".current-segment-card .split-row").getAttribute("title"), /太短/, "disabled split should explain that the current segment is too short");
   const repairStatus = page.locator(".workbench-quick-state");
@@ -1484,8 +1485,6 @@ try {
   const repairedTimingText = await readDownloadText(repairedTimingDownload);
   assert.match(repairedTimingText, /第一条过短|第三条也过短/, "export should continue after automatically repairing timeline issues");
   assert.doesNotMatch(await readWorkbenchFeedback(page), /请修正|时间轴问题/, "timeline repair should not push structural errors back to the user");
-  await page.getByRole("button", { name: "撤销", exact: true }).click();
-  await page.waitForFunction(() => document.querySelectorAll(".review-list-row").length === 3);
   await page.getByRole("button", { name: "撤销", exact: true }).click();
   await page.waitForFunction(() => document.querySelector(".current-segment-card textarea")?.value.includes("带时间范围的开场"));
   assert.equal(await page.locator(".media-panel").count(), 0, "text-import result state should not keep an empty media card");

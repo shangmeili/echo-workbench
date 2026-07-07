@@ -811,6 +811,16 @@ function repairReadableReviewRows(inputRows = []) {
   };
 }
 
+function repairReviewStructure(inputRows = []) {
+  const timedRows = repairAsrTimeline(inputRows);
+  const readableRepair = repairReadableReviewRows(timedRows);
+  const repairedRows = repairAsrTimeline(readableRepair.rows);
+  return {
+    ...readableRepair,
+    rows: normalizeReviewRows(repairedRows),
+  };
+}
+
 function providerReady(provider, serverStatus = defaultServerStatus) {
   if (provider.keySource === "env") return Boolean(provider.baseUrl && provider.model && serverStatus.envKeyConfigured);
   return Boolean(provider.baseUrl && provider.model && provider.apiKey);
@@ -2297,7 +2307,7 @@ function WorkbenchView({ activeTool, onBackHome, rows, setRows, media, setMedia,
 
   const repairLongSubtitleRows = () => {
     if (!longSubtitleIssueRows.length) return;
-    const repairResult = repairReadableReviewRows(rows);
+    const repairResult = repairReviewStructure(rows);
     if (repairResult.addedRowCount <= 0) {
       jumpToNextQualityIssue();
       setMessage("当前长段缺少稳定断点，已定位到对应段落，可在校对区直接编辑。");
@@ -2805,7 +2815,7 @@ ${rawText}`;
           correctionText = `自动校正未完成：${error.message || "文本模型请求失败"}。已保留 ASR 原始结果。`;
         }
       }
-      const readableRepair = repairReadableReviewRows(finalRows);
+      const readableRepair = repairReviewStructure(finalRows);
       const reviewRows = readableRepair.rows;
       pushUndoSnapshot("生成转写结果");
       setRows(reviewRows);
@@ -2924,7 +2934,7 @@ ${rawText}`;
     }
     if (!confirmInterruptingWork("导入字幕或转写文件")) return;
     const text = await file.text();
-    const repairResult = repairReadableReviewRows(parseSubtitle(text));
+    const repairResult = repairReviewStructure(parseSubtitle(text));
     const parsed = repairResult.rows;
     if (!parsed.length) {
       setMessage("没有解析到可导入的字幕或文本内容。");
@@ -2938,7 +2948,7 @@ ${rawText}`;
       setMessage("请先配置本地工作区，再导入字幕或转写文本。");
       return;
     }
-    const repairResult = repairReadableReviewRows(parseSubtitle(manualImport));
+    const repairResult = repairReviewStructure(parseSubtitle(manualImport));
     const parsed = repairResult.rows;
     if (!parsed.length) {
       setMessage("请输入可导入的字幕或转写文本。");
@@ -3385,7 +3395,7 @@ ${JSON.stringify(chunk.map((row) => ({ id: row.id, start: row.start, end: row.en
   const exportCurrentRows = (format) => {
     let rowsToExport = rows;
     if (hasTimingExportIssue(rowsToExport)) {
-      const repairedRows = normalizeReviewRows(repairAsrTimeline(rowsToExport));
+      const repairedRows = repairReviewStructure(rowsToExport).rows;
       if (hasTimingExportIssue(repairedRows)) {
         setMessage("导出失败：系统未能自动修复时间轴，请重新生成转写或导入有效字幕文件。");
         return;
@@ -6007,7 +6017,7 @@ export function App() {
     const workspaceProject = await loadWorkspaceProject(projectId);
     if (!isCurrent()) return { stale: true };
     const repairedProjectRows = Array.isArray(workspaceProject.rows)
-      ? repairReadableReviewRows(repairAsrTimeline(workspaceProject.rows))
+      ? repairReviewStructure(workspaceProject.rows)
       : { rows: [], splitRowCount: 0, addedRowCount: 0 };
     const recent = {
       ...(fallbackItem || {}),
