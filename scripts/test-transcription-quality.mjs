@@ -177,6 +177,22 @@ const importedSubtitleRows = normalizeLikeWorkbench(parseSubtitle([
 ].join("\n")));
 assertWorkbenchQuality(importedSubtitleRows, "subtitle import auto repair");
 
+const importedBoundaryDuplicateRows = normalizeLikeWorkbench(parseSubtitle([
+  "1",
+  "00:00:00,000 --> 00:00:02,400",
+  "边界重复句。新的内容。",
+  "",
+  "2",
+  "00:00:02,100 --> 00:00:04,800",
+  "新的内容。第三句。",
+].join("\n")));
+assert.deepEqual(
+  importedBoundaryDuplicateRows.map((row) => row.text),
+  ["边界重复句。新的内容。", "第三句。"],
+  "imported or restored rows should trim repeated ASR chunk boundaries automatically",
+);
+assertWorkbenchQuality(importedBoundaryDuplicateRows, "subtitle import boundary duplicate repair");
+
 const preservedEmptyRepair = repairReviewStructurePreservingEmpty([
   { id: "keep-empty", start: 0, end: 1, speaker: "未标注", text: "", translation: "" },
   {

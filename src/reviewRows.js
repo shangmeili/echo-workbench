@@ -1,4 +1,4 @@
-import { mergeShortAdjacentAsrRows, repairAsrTimeline, splitTranscriptIntoSentences, transcriptWeight } from "./asrRows.js";
+import { dedupeAdjacentAsrRows, mergeShortAdjacentAsrRows, repairAsrTimeline, splitTranscriptIntoSentences, transcriptWeight } from "./asrRows.js";
 
 export function normalizeReviewRows(rows = []) {
   return rows.map((row, index) => {
@@ -104,7 +104,7 @@ function repairReadableReviewRows(inputRows = []) {
 }
 
 export function repairReviewStructure(inputRows = []) {
-  const timedRows = repairAsrTimeline(inputRows);
+  const timedRows = repairAsrTimeline(dedupeAdjacentAsrRows(inputRows));
   const mergedRows = mergeShortAdjacentAsrRows(timedRows, { maxGapSeconds: 0.85, maxCombinedDuration: 5.8 });
   const readableRepair = repairReadableReviewRows(repairAsrTimeline(mergedRows));
   const repairedRows = repairAsrTimeline(readableRepair.rows);
