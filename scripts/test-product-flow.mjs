@@ -1432,6 +1432,16 @@ try {
   const cleanCopiedTranscript = await page.evaluate(() => navigator.clipboard.readText());
   assert.match(cleanCopiedTranscript, /带时间范围的开场[\s\S]*Explicit range line[\s\S]*小数时间范围/, "copy all should copy the corrected transcript body");
   assert.doesNotMatch(cleanCopiedTranscript, /\[00:|00:05\.000|Speaker 1:/, "copy all should omit timecodes and speaker prefixes for clean pasting");
+  await page.locator(".review-list-row").first().click();
+  await page.locator(".current-segment-card .subtitle-source-textarea").fill("我们先看整体结论然后再处理细节如果还有问题继续复核不要把这种错误作为提示交给用户解决而是作为功能问题解决。");
+  await page.locator(".workspace-title").click();
+  await page.waitForFunction(() => document.querySelectorAll(".review-list-row").length > 4);
+  const manuallyRepairedRows = await page.evaluate(() => [...document.querySelectorAll(".review-list-row")].map((row) => row.innerText));
+  assert.match(manuallyRepairedRows.join("\n"), /我们先看整体结论[\s\S]*然后再处理细节[\s\S]*如果还有问题继续复核/, "manual source edits should be split into readable proofreading rows on blur");
+  assert.doesNotMatch(await page.locator(".current-segment-card").innerText(), /单条过长/, "manual source edits should not leave an oversized segment for the user to fix");
+  await page.getByRole("button", { name: "撤销", exact: true }).click();
+  await page.waitForFunction(() => document.querySelectorAll(".review-list-row").length === 4);
+  assert.match(await page.locator(".review-list-row").first().innerText(), /带时间范围的开场/);
   await assertNarrowNoMediaResultLayout(page, "视频转写");
   const topHistoryLayout = await page.evaluate(() => [...document.querySelectorAll(".top-history-control button")].map((button) => {
     const rect = button.getBoundingClientRect();
@@ -1464,7 +1474,7 @@ try {
     "exporting a file should use the export/up arrow icon",
   );
   assert.equal(await page.getByRole("button", { name: "撤销", exact: true }).isEnabled(), true, "proofreading undo should be visible and enabled in result mode");
-  assert.equal(await page.getByRole("button", { name: "重做", exact: true }).isEnabled(), false, "proofreading redo should stay disabled until the user undoes an edit");
+  assert.equal(await page.getByRole("button", { name: "重做", exact: true }).isEnabled(), true, "redo should remain available after undoing the manual structure repair check");
   await page.getByRole("button", { name: "撤销", exact: true }).click();
   await page.waitForFunction(() => !document.querySelector(".subtitle-editor") && document.querySelectorAll(".review-list-row").length === 0);
   assert.equal(await page.getByRole("button", { name: "重做", exact: true }).isEnabled(), true, "redo should remain visible after undoing the initial text import");

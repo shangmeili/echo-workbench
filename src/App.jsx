@@ -708,6 +708,18 @@ function offsetRows(rows, offset) {
   }));
 }
 
+function repairReviewStructureUnlessEmpty(rows = []) {
+  if (rows.some((row) => !String(row?.text || "").trim())) {
+    return {
+      rows: normalizeReviewRows(rows),
+      splitRowCount: 0,
+      addedRowCount: 0,
+      mergedRowCount: 0,
+    };
+  }
+  return repairReviewStructure(rows);
+}
+
 function displaySpeakerLabel(speaker) {
   const label = String(speaker || "").trim();
   if (!label || label === "未标注") return "";
@@ -1636,9 +1648,30 @@ function WorkbenchView({ activeTool, onBackHome, rows, setRows, media, setMedia,
     textEditSnapshotRef.current = { ...session, pushed: true };
   };
 
-  const finishTextEditSnapshot = (rowId, field) => {
+  const finishTextEditSnapshot = (rowId, field, options = {}) => {
     if (textEditSnapshotRef.current?.key === `${rowId}:${field}`) {
       textEditSnapshotRef.current = null;
+    }
+    if (field === "text" && options.repairStructure) {
+      const repairResult = repairReviewStructureUnlessEmpty(rows);
+      const changed = repairResult.rows.length !== rows.length
+        || repairResult.rows.some((row, index) => {
+          const current = rows[index];
+          return !current
+            || row.id !== current.id
+            || row.text !== current.text
+            || Math.abs((Number(row.start) || 0) - (Number(current.start) || 0)) > 0.001
+            || Math.abs((Number(row.end) || 0) - (Number(current.end) || 0)) > 0.001;
+        });
+      if (!changed) return;
+      setRows(repairResult.rows);
+      if (!repairResult.rows.some((row) => row.id === rowId)) {
+        setSelectedRowId(repairResult.rows[0]?.id || "");
+      }
+      markRowsEdited(repairResult.rows.length);
+      const mergeText = repairResult.mergedRowCount ? `已自动合并 ${repairResult.mergedRowCount} 条短碎片。` : "";
+      const splitText = repairResult.splitRowCount ? `已自动拆分 ${repairResult.splitRowCount} 条过长段落。` : "";
+      if (mergeText || splitText) setMessage(`${mergeText}${splitText}`);
     }
   };
 
@@ -2272,10 +2305,12 @@ function WorkbenchView({ activeTool, onBackHome, rows, setRows, media, setMedia,
       return;
     }
     pushUndoSnapshot(scope === "current" ? "替换当前匹配" : "批量替换文本");
-    setRows(nextRows);
+    const repairResult = repairReviewStructureUnlessEmpty(nextRows);
+    setRows(repairResult.rows);
     if (scope === "current" && currentTargetId) setSelectedRowId(currentTargetId);
-    markRowsEdited(nextRows.length);
-    setMessage(scope === "current" ? "已替换当前匹配项，可使用撤销恢复。" : `已替换 ${changedCount} 条段落中的匹配项，可使用撤销恢复。`);
+    markRowsEdited(repairResult.rows.length);
+    const splitText = repairResult.splitRowCount ? ` 已自动拆分 ${repairResult.splitRowCount} 条过长段落。` : "";
+    setMessage(scope === "current" ? `已替换当前匹配项，可使用撤销恢复。${splitText}` : `已替换 ${changedCount} 条段落中的匹配项，可使用撤销恢复。${splitText}`);
   };
 
   const confirmInterruptingWork = (actionLabel) => {
@@ -2949,7 +2984,8 @@ ${JSON.stringify(chunk.map((row) => ({ id: row.id, start: row.start, end: row.en
     setBusy("correct");
     setMessage("");
     try {
-      const corrected = normalizeReviewRows(await correctRowsWithModel(rows, { signal: abortController.signal }));
+      const repairResult = repairReviewStructureUnlessEmpty(await correctRowsWithModel(rows, { signal: abortController.signal }));
+      const corrected = repairResult.rows;
       throwIfModelAborted(abortController.signal);
       pushUndoSnapshot(`校正${segmentKind}`);
       setRows(corrected);
@@ -2958,7 +2994,8 @@ ${JSON.stringify(chunk.map((row) => ({ id: row.id, start: row.start, end: row.en
         meta: `${segmentKind}校正 · ${corrected.length} 条`,
         time: formatProjectTime(),
       });
-      setMessage(`已校正 ${corrected.length} 条${segmentKind}文本。请继续核对时间轴和专有名词。`);
+      const splitText = repairResult.splitRowCount ? `已自动拆分 ${repairResult.splitRowCount} 条过长段落。` : "";
+      setMessage(`已校正 ${corrected.length} 条${segmentKind}文本。${splitText}请继续核对时间轴和专有名词。`);
     } catch (error) {
       if (isAbortError(error)) return;
       setMessage(error.message || `${segmentKind}校正失败。`);
@@ -4343,7 +4380,7 @@ ${JSON.stringify(chunk.map((row) => ({ id: row.id, start: row.start, end: row.en
                         onKeyDown={(event) => handleCurrentEditorKeyDown(event, activeReviewRow.id, "text")}
                         onKeyUp={(event) => rememberTextSelection(activeReviewRow.id, event)}
                         onChange={(event) => updateRowTextField(activeReviewRow.id, "text", event.target.value)}
-                        onBlur={() => finishTextEditSnapshot(activeReviewRow.id, "text")}
+                        onBlur={() => finishTextEditSnapshot(activeReviewRow.id, "text", { repairStructure: true })}
                         placeholder="校对当前段落"
                         aria-label="当前段落校对稿"
                       />
