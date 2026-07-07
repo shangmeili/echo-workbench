@@ -199,7 +199,7 @@ function applySampleProfile(args) {
 function assertWorkbenchRows(rows, label) {
   assert.ok(rows.length > 0, `${label}: no editable rows after workbench repair`);
   rows.forEach((row, index) => {
-    const hints = getSubtitleQualityHints(row, rows[index + 1]).filter((hint) => hint !== "阅读过快" && hint !== "时长过短");
+    const hints = getSubtitleQualityHints(row, rows[index + 1]);
     assert.deepEqual(hints, [], `${label}: row ${index + 1} still has structural quality hints: ${hints.join("、")} / ${row.text}`);
   });
   const secondPass = repairReviewStructure(rows).rows;

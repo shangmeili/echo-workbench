@@ -200,6 +200,28 @@ const coarseSegmentRows = rowsFromAsrResult({
 assert.ok(coarseSegmentRows.length >= 2);
 assert.ok(coarseSegmentRows.at(-1).end < 12, `coarse ASR segment timing should be repaired for short speech, got ${coarseSegmentRows.at(-1).end}`);
 
+const compressedSegmentRows = rowsFromAsrResult({
+  segments: [
+    {
+      start: 0,
+      end: 1,
+      text: "我们现在必须马上离开这里否则就来不及了",
+    },
+  ],
+}, 20);
+assert.ok(compressedSegmentRows.at(-1).end > 3.5, `compressed ASR timing should expand to readable speech duration, got ${compressedSegmentRows.at(-1).end}`);
+
+const compressedEnglishRows = rowsFromAsrResult({
+  segments: [
+    {
+      start: 0,
+      end: 1,
+      text: "I have spent the last three weeks sending people into that river to look for that bell and they have not found it",
+    },
+  ],
+}, 20);
+assert.ok(compressedEnglishRows.at(-1).end > 8, `compressed English ASR timing should expand to readable speech duration, got ${compressedEnglishRows.at(-1).end}`);
+
 const realisticSegmentRows = rowsFromAsrResult({
   segments: [
     {

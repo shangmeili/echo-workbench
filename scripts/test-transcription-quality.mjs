@@ -4,7 +4,7 @@ import {
   splitTranscriptIntoSentences,
   transcriptWeight,
 } from "../src/asrRows.js";
-import { normalizeReviewRows, repairReviewStructure, repairReviewStructurePreservingEmpty, repairReviewTimelinePreservingEmpty } from "../src/reviewRows.js";
+import { getSubtitleQualityHints, normalizeReviewRows, repairReviewStructure, repairReviewStructurePreservingEmpty, repairReviewTimelinePreservingEmpty } from "../src/reviewRows.js";
 import { parseSubtitle } from "../src/subtitleImport.js";
 
 function assertCleanTimeline(rows, label) {
@@ -48,6 +48,17 @@ function assertWorkbenchQuality(rows, label) {
   assertNoMergeableFragments(rows, label);
 }
 
+function assertNoTimingPressure(rows, label) {
+  rows.forEach((row, index) => {
+    const hints = getSubtitleQualityHints(row, rows[index + 1]);
+    assert.equal(
+      hints.includes("阅读过快") || hints.includes("时长过短"),
+      false,
+      `${label}: row ${index + 1} should not leave timing pressure for the user: ${hints.join("、")} / ${row.text}`,
+    );
+  });
+}
+
 function normalizeLikeWorkbench(rows) {
   return repairReviewStructure(rows).rows;
 }
@@ -87,6 +98,26 @@ const longChineseRows = normalizeLikeWorkbench(rowsFromAsrResult({
 }, 16));
 assert.ok(longChineseRows.length >= 4, "long Chinese ASR rows should be split into multiple proofreading rows");
 assertWorkbenchQuality(longChineseRows, "long Chinese ASR row repair");
+
+const compressedChineseRows = normalizeLikeWorkbench(rowsFromAsrResult({
+  segments: [{
+    start: 0,
+    end: 1,
+    text: "我们现在必须马上离开这里否则就来不及了",
+  }],
+}, 20));
+assertWorkbenchQuality(compressedChineseRows, "compressed Chinese ASR row repair");
+assertNoTimingPressure(compressedChineseRows, "compressed Chinese ASR row repair");
+
+const compressedEnglishRows = normalizeLikeWorkbench(rowsFromAsrResult({
+  segments: [{
+    start: 0,
+    end: 1,
+    text: "I have spent the last three weeks sending people into that river to look for that bell and they have not found it",
+  }],
+}, 20));
+assertWorkbenchQuality(compressedEnglishRows, "compressed English ASR row repair");
+assertNoTimingPressure(compressedEnglishRows, "compressed English ASR row repair");
 
 const longMixedRows = normalizeLikeWorkbench(rowsFromAsrResult({
   segments: [{

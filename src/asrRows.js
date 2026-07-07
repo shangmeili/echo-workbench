@@ -621,6 +621,7 @@ function repairCoarseSegmentTiming(rows, fallbackDuration = 0) {
   if (!maxEnd) return validRows;
   const estimatedDuration = estimateRowsSpeechDuration(validRows);
   const mediaDuration = Number(fallbackDuration) > 0 ? Number(fallbackDuration) : 0;
+  const estimatedTargetDuration = mediaDuration ? Math.min(estimatedDuration, mediaDuration) : estimatedDuration;
 
   if (mediaDuration && maxEnd > mediaDuration * 20) {
     return repairAsrTimeline(scaleRowsToDuration(validRows, mediaDuration));
@@ -630,6 +631,9 @@ function repairCoarseSegmentTiming(rows, fallbackDuration = 0) {
   }
   if (estimatedDuration && maxEnd > estimatedDuration * 2.5) {
     return repairAsrTimeline(scaleRowsToDuration(validRows, estimatedDuration));
+  }
+  if (estimatedDuration > maxEnd * 1.65 && (!mediaDuration || maxEnd < mediaDuration * 0.75)) {
+    return repairAsrTimeline(scaleRowsToDuration(validRows, estimatedTargetDuration));
   }
   return repairAsrTimeline(validRows);
 }
