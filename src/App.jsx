@@ -3268,9 +3268,11 @@ ${JSON.stringify(chunk.map((row) => ({ id: row.id, start: row.start, end: row.en
       ...rows.slice(index + 2),
     ];
     pushUndoSnapshot("合并段落");
-    setRows(normalizeReviewRows(nextRows));
-    markRowsEdited(nextRows.length);
-    setMessage("已合并当前段落和下一段。");
+    const repairResult = repairReviewStructureUnlessEmpty(nextRows);
+    setRows(repairResult.rows);
+    markRowsEdited(repairResult.rows.length);
+    const splitText = repairResult.splitRowCount ? `系统已重新拆分 ${repairResult.splitRowCount} 条过长段落。` : "";
+    setMessage(`已合并当前段落和下一段。${splitText}`);
   };
 
   const shiftAllTimecodes = (offsetSeconds) => {
@@ -5960,7 +5962,7 @@ export function App() {
     const workspaceProject = await loadWorkspaceProject(projectId);
     if (!isCurrent()) return { stale: true };
     const repairedProjectRows = Array.isArray(workspaceProject.rows)
-      ? repairReviewStructure(workspaceProject.rows)
+      ? repairReviewStructureUnlessEmpty(workspaceProject.rows)
       : { rows: [], splitRowCount: 0, addedRowCount: 0, mergedRowCount: 0 };
     const recent = {
       ...(fallbackItem || {}),
