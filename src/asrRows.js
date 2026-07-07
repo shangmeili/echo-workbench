@@ -98,7 +98,7 @@ function isProtectedCjkPatternBoundary(value, index, pattern) {
   if (pattern === "需要" && text.slice(index - 2, index) === "系统") return true;
   if (pattern === "用户" && text.slice(index - 2, index) === "普通") return true;
   if (pattern === "用户" && ["提示", "要求", "交给"].includes(text.slice(index - 2, index))) return true;
-  if (pattern === "用户" && ["让", "给", "是"].includes(text[index - 1])) return true;
+  if (pattern === "用户" && ["让", "给", "是", "由"].includes(text[index - 1])) return true;
   return false;
 }
 

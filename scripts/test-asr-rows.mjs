@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { asrResultHasTiming, dedupeAdjacentAsrRows, detectTranscriptionQualityIssue, groupWordsToRows, joinAsrTokens, mergeShortAdjacentAsrRows, normalizeAsrText, repairAsrTimeline, rowsFromAsrResult, splitTranscriptIntoSentences, transcriptWeight } from "../src/asrRows.js";
+import { getSubtitleQualityHints, repairReviewStructure } from "../src/reviewRows.js";
 
 assert.deepEqual(
   splitTranscriptIntoSentences("大家好。今天测试转写！换一行\n继续。"),
@@ -241,6 +242,14 @@ assert.deepEqual(
 );
 
 assert.deepEqual(
+  splitTranscriptIntoSentences("这类错误不应该作为提示由用户解决而是作为功能问题解决"),
+  [
+    "这类错误不应该作为提示由用户解决",
+    "而是作为功能问题解决",
+  ],
+);
+
+assert.deepEqual(
   splitTranscriptIntoSentences("昨天我们看了一个会议录屏里面有产品经理开发和运营三个人讨论上线计划大家说话比较快中间还有一些专有名词比如回响工作台和模型配置"),
   [
     "昨天我们看了一个会议录屏里面有",
@@ -256,9 +265,10 @@ for (const rows of [
   splitTranscriptIntoSentences("服务返回失败时页面需要说明具体原因不能只显示开始转写又恢复原状"),
   splitTranscriptIntoSentences("视频上传后应该直接可以开始转写如果模型返回的内容没有标点"),
   splitTranscriptIntoSentences("界面不应该把翻译放在主流程前面也不应该让转写按钮藏在后处理里面"),
+  splitTranscriptIntoSentences("这类错误不应该作为提示由用户解决而是作为功能问题解决"),
 ]) {
   const joined = rows.join("|");
-  assert.doesNotMatch(joined, /普通\|用户|用户\|来说|产品\|经理|上线\|计划|专有\|名词|返\|回失败|到\|底|把\|翻译|视频上传后\|应该|直接\|可以/, "Chinese hard split should not break common product and subtitle-review phrases");
+  assert.doesNotMatch(joined, /普通\|用户|用户\|来说|由\|用户|用户\|解决|产品\|经理|上线\|计划|专有\|名词|返\|回失败|到\|底|把\|翻译|视频上传后\|应该|直接\|可以/, "Chinese hard split should not break common product and subtitle-review phrases");
 }
 
 assert.ok(
@@ -603,6 +613,57 @@ for (let index = 1; index < overlappingRows.length; index += 1) {
   );
 }
 assert.deepEqual(overlappingRows.map((row) => row.text), ["第一句内容。", "第二句内容。", "第三句内容。"]);
+
+for (const scenario of [
+  {
+    name: "coarse long product failure segment",
+    duration: 30,
+    result: {
+      segments: [{
+        start: 0,
+        end: 30,
+        text: "用户点击开始转写以后按钮变成转写中但是过一段时间又恢复成开始转写页面没有告诉我到底失败在哪里这类错误不应该作为提示由用户解决而是作为功能问题解决",
+      }],
+    },
+    expectedText: /不应该作为提示由用户解决/,
+  },
+  {
+    name: "overlapping repeated service failure prefix",
+    duration: 7,
+    result: {
+      segments: [
+        { start: 0, end: 4, text: "服务返回失败时页面需要说明具体原因不能只显示开始转写" },
+        { start: 3.1, end: 7, text: "不能只显示开始转写又恢复原状用户不知道发生了什么" },
+      ],
+    },
+    expectedText: /又恢复原状/,
+  },
+  {
+    name: "compressed unpunctuated upload flow",
+    duration: 8,
+    result: {
+      segments: [{
+        start: 0,
+        end: 0.7,
+        text: "视频上传后应该直接可以开始转写如果模型返回的内容没有标点也应该自动拆分成适合校对的段落",
+      }],
+    },
+    expectedText: /视频上传后应该直接可以开始转写/,
+  },
+]) {
+  const repairedRows = repairReviewStructure(rowsFromAsrResult(scenario.result, scenario.duration), { maxEnd: scenario.duration }).rows;
+  const allHints = repairedRows.flatMap((row, index) => getSubtitleQualityHints(row, repairedRows[index + 1]));
+  assert.deepEqual(
+    allHints.filter((hint) => ["时间无效", "时间重叠", "单条过长", "阅读过快"].includes(hint)),
+    [],
+    `${scenario.name}: system should repair timing and readability before proofreading`,
+  );
+  assert.match(
+    repairedRows.map((row) => row.text).join("|"),
+    scenario.expectedText,
+    `${scenario.name}: repaired rows should keep the intended phrase intact`,
+  );
+}
 
 const repairedMergedRows = repairAsrTimeline(mergeShortAdjacentAsrRows([
   { id: "a", start: 0, end: 2.6, speaker: "S1", text: "This is fine.", translation: "" },
