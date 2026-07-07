@@ -15,6 +15,7 @@ let secondaryWorkspaceRoot = "";
 let sampleSubtitlePath = "";
 let englishSubtitlePath = "";
 let riskySubtitlePath = "";
+let fragmentSubtitlePath = "";
 let longSubtitlePath = "";
 let sampleAudioPath = "";
 let sampleVideoPath = "";
@@ -970,6 +971,7 @@ try {
   sampleSubtitlePath = join(tmpdir(), `echo-product-flow-${Date.now()}.srt`);
   englishSubtitlePath = join(tmpdir(), `echo-product-flow-english-${Date.now()}.srt`);
   riskySubtitlePath = join(tmpdir(), `echo-product-flow-risky-${Date.now()}.srt`);
+  fragmentSubtitlePath = join(tmpdir(), `echo-product-flow-fragments-${Date.now()}.srt`);
   longSubtitlePath = join(tmpdir(), `echo-product-flow-long-${Date.now()}.srt`);
   sampleAudioPath = join(tmpdir(), `echo-product-flow-${Date.now()}.wav`);
   sampleVideoPath = join(tmpdir(), `echo-product-flow-${Date.now()}.mp4`);
@@ -1006,6 +1008,24 @@ try {
     "3",
     "00:00:04,000 --> 00:00:04,300",
     "第三条也过短",
+    "",
+  ].join("\n"));
+  await writeFile(fragmentSubtitlePath, [
+    "1",
+    "00:00:00,000 --> 00:00:00,600",
+    "我以为",
+    "",
+    "2",
+    "00:00:00,700 --> 00:00:01,100",
+    "我们",
+    "",
+    "3",
+    "00:00:01,200 --> 00:00:02,200",
+    "只能给 Kade",
+    "",
+    "4",
+    "00:00:03,500 --> 00:00:05,500",
+    "这是完整句子。",
     "",
   ].join("\n"));
   await writeFile(termImportPath, [
@@ -1537,6 +1557,15 @@ try {
   await page.getByRole("button", { name: "撤销", exact: true }).click();
   await page.waitForFunction(() => document.querySelectorAll(".review-list-row").length === 3);
   assert.match(await readCorrectionTableValues(page), /带时间范围的开场/);
+
+  await chooseFile(page, page.getByRole("button", { name: "替换转写文件", exact: true }), fragmentSubtitlePath);
+  await page.waitForFunction(() => document.querySelector(".replace-import-confirm")?.textContent.includes("2 条"));
+  await page.getByRole("button", { name: "确认替换", exact: true }).click();
+  await page.waitForFunction(() => document.querySelectorAll(".review-list-row").length === 2);
+  assert.match(await readCorrectionTableValues(page), /我以为我们只能给 Kade/, "short ASR fragments should merge before entering proofreading");
+  assert.match(await readWorkbenchFeedback(page), /已自动合并 2 条短碎片/, "import feedback should explain automatic short-fragment merging");
+  await page.getByRole("button", { name: "撤销", exact: true }).click();
+  await page.waitForFunction(() => document.querySelectorAll(".review-list-row").length === 3);
 
   await page.getByLabel("查找校对内容").fill("Explicit");
   await page.getByRole("button", { name: "打开替换", exact: true }).click();
@@ -3017,6 +3046,7 @@ try {
   if (sampleSubtitlePath) await rm(sampleSubtitlePath, { force: true });
   if (englishSubtitlePath) await rm(englishSubtitlePath, { force: true });
   if (riskySubtitlePath) await rm(riskySubtitlePath, { force: true });
+  if (fragmentSubtitlePath) await rm(fragmentSubtitlePath, { force: true });
   if (longSubtitlePath) await rm(longSubtitlePath, { force: true });
   if (sampleAudioPath) await rm(sampleAudioPath, { force: true });
   if (sampleVideoPath) await rm(sampleVideoPath, { force: true });

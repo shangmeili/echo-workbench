@@ -813,10 +813,13 @@ function repairReadableReviewRows(inputRows = []) {
 
 function repairReviewStructure(inputRows = []) {
   const timedRows = repairAsrTimeline(inputRows);
-  const readableRepair = repairReadableReviewRows(timedRows);
+  const mergedRows = mergeShortAdjacentAsrRows(timedRows, { maxGapSeconds: 0.85, maxCombinedDuration: 5.8 });
+  const readableRepair = repairReadableReviewRows(repairAsrTimeline(mergedRows));
   const repairedRows = repairAsrTimeline(readableRepair.rows);
+  const mergedRowCount = Math.max(0, timedRows.length - mergedRows.length);
   return {
     ...readableRepair,
+    mergedRowCount,
     rows: normalizeReviewRows(repairedRows),
   };
 }
@@ -2848,8 +2851,9 @@ ${rawText}`;
       const dedupeText = dedupeCount ? `已合并 ${dedupeCount} 条重叠重复段落。` : "";
       const qualityIssue = detectTranscriptionQualityIssue(reviewRows, sourceLanguage, asrSource.duration);
       const readabilityText = readableRepair.splitRowCount ? `已自动拆分 ${readableRepair.splitRowCount} 条过长段落。` : "";
+      const shortFragmentText = readableRepair.mergedRowCount ? `已自动合并 ${readableRepair.mergedRowCount} 条短碎片。` : "";
       const qualityText = qualityIssue ? ` ${qualityIssue}` : " 请继续校对时间轴、专有名词和低置信片段。";
-      const successMessage = hasTiming ? `${conversionText}${chunkText}${dedupeText}${readabilityText}云端转写完成，已生成 ${reviewRows.length} 条可编辑段落。${correctionText}${qualityText}` : `${conversionText}${chunkText}${dedupeText}${readabilityText}云端转写完成，已生成 ${reviewRows.length} 条可编辑段落；当前模型未返回词级时间戳，时间轴已按文本自动分段，请校对。${correctionText}${qualityText}`;
+      const successMessage = hasTiming ? `${conversionText}${chunkText}${dedupeText}${readabilityText}${shortFragmentText}云端转写完成，已生成 ${reviewRows.length} 条可编辑段落。${correctionText}${qualityText}` : `${conversionText}${chunkText}${dedupeText}${readabilityText}${shortFragmentText}云端转写完成，已生成 ${reviewRows.length} 条可编辑段落；当前模型未返回词级时间戳，时间轴已按文本自动分段，请校对。${correctionText}${qualityText}`;
       setMessage(successMessage);
       setWorkbenchTranscriptionStatus({ state: "success", message: successMessage, stage: "生成校对结果" });
       setWorkspaceState((current) => ({ ...current, lastTranscriptionStatus: null }));
@@ -2911,10 +2915,11 @@ ${rawText}`;
         tool: activeTool,
       });
     }
+    const mergedText = options.mergedRowCount ? `已自动合并 ${options.mergedRowCount} 条短碎片。` : "";
     const splitText = splitRowCount ? `已自动拆分 ${splitRowCount} 条过长段落。` : "";
     setMessage(hadRows
-      ? `已替换当前校对表，导入 ${parsed.length} 条${segmentKind}段落。${splitText}可使用撤销恢复上一步。`
-      : `已解析 ${parsed.length} 条${segmentKind}段落。${splitText}`);
+      ? `已替换当前校对表，导入 ${parsed.length} 条${segmentKind}段落。${mergedText}${splitText}可使用撤销恢复上一步。`
+      : `已解析 ${parsed.length} 条${segmentKind}段落。${mergedText}${splitText}`);
   };
 
   const requestImportRows = (parsed, options = {}) => {
@@ -2940,7 +2945,7 @@ ${rawText}`;
       setMessage("没有解析到可导入的字幕或文本内容。");
       return;
     }
-    requestImportRows(parsed, { source: "file", name: file.name, splitRowCount: repairResult.splitRowCount });
+    requestImportRows(parsed, { source: "file", name: file.name, splitRowCount: repairResult.splitRowCount, mergedRowCount: repairResult.mergedRowCount });
   };
 
   const importManualText = () => {
@@ -2954,7 +2959,7 @@ ${rawText}`;
       setMessage("请输入可导入的字幕或转写文本。");
       return;
     }
-    requestImportRows(parsed, { source: "manual", name: inferManualImportProjectName(parsed, isSubtitleWorkflow ? "手动导入字幕文本" : "手动导入转写文本"), splitRowCount: repairResult.splitRowCount });
+    requestImportRows(parsed, { source: "manual", name: inferManualImportProjectName(parsed, isSubtitleWorkflow ? "手动导入字幕文本" : "手动导入转写文本"), splitRowCount: repairResult.splitRowCount, mergedRowCount: repairResult.mergedRowCount });
   };
 
   const confirmPendingImport = () => {
@@ -6018,7 +6023,7 @@ export function App() {
     if (!isCurrent()) return { stale: true };
     const repairedProjectRows = Array.isArray(workspaceProject.rows)
       ? repairReviewStructure(workspaceProject.rows)
-      : { rows: [], splitRowCount: 0, addedRowCount: 0 };
+      : { rows: [], splitRowCount: 0, addedRowCount: 0, mergedRowCount: 0 };
     const recent = {
       ...(fallbackItem || {}),
       ...(workspaceProject.recent || {}),
