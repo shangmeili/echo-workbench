@@ -671,19 +671,47 @@ for (const scenario of [
     },
     expectedText: /视频上传后应该直接可以开始转写/,
   },
+  {
+    name: "overlapping product translation boundary",
+    duration: 15.68,
+    result: {
+      segments: [
+        {
+          start: 0,
+          end: 5,
+          text: "这个项目的主要功能是转写不是翻译翻译只应该作为附加功能在源语言和目",
+        },
+        {
+          start: 4.2,
+          end: 10,
+          text: "附加功能在源语言和目标语言不一致的时候使用字幕文件翻译也是单独入口",
+        },
+      ],
+    },
+    expectedText: /转写不是翻译\|翻译只应该作为附加功能在\|源语言和目标语言/,
+    rejectedText: /转写\|不是|源语言和目\||\|附加功能在\||源语言\|和目标语言/,
+  },
 ]) {
   const repairedRows = repairReviewStructure(rowsFromAsrResult(scenario.result, scenario.duration), { maxEnd: scenario.duration }).rows;
   const allHints = repairedRows.flatMap((row, index) => getSubtitleQualityHints(row, repairedRows[index + 1]));
+  const repairedText = repairedRows.map((row) => row.text).join("|");
   assert.deepEqual(
     allHints.filter((hint) => ["时间无效", "时间重叠", "单条过长", "阅读过快"].includes(hint)),
     [],
     `${scenario.name}: system should repair timing and readability before proofreading`,
   );
   assert.match(
-    repairedRows.map((row) => row.text).join("|"),
+    repairedText,
     scenario.expectedText,
     `${scenario.name}: repaired rows should keep the intended phrase intact`,
   );
+  if (scenario.rejectedText) {
+    assert.doesNotMatch(
+      repairedText,
+      scenario.rejectedText,
+      `${scenario.name}: repaired rows should remove duplicated or truncated overlap fragments`,
+    );
+  }
 }
 
 const repairedMergedRows = repairAsrTimeline(mergeShortAdjacentAsrRows([

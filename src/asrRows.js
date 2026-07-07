@@ -36,6 +36,7 @@ const phraseBreakBeforePatterns = [
   "第一个", "第二个", "第三个", "第四个", "第一点", "第二点", "第三点", "第四点",
   "最近项目", "本地工作区", "视频上传后", "导出字幕前", "服务返回失败",
   "这对普通用户来说", "没有按照", "时间重叠也不应该", "而应该", "并保留",
+  "翻译只应该", "源语言和目标语言",
 ];
 
 const phraseStrongBreakBeforePatterns = new Set([
@@ -49,6 +50,7 @@ const phraseStrongBreakBeforePatterns = new Set([
   "第一个", "第二个", "第三个", "第四个", "第一点", "第二点", "第三点", "第四点",
   "最近项目", "本地工作区", "视频上传后", "导出字幕前", "服务返回失败",
   "这对普通用户来说", "没有按照", "时间重叠也不应该", "而应该", "并保留",
+  "翻译只应该", "源语言和目标语言",
 ]);
 
 const implicitBreakBeforePatterns = [
@@ -61,6 +63,7 @@ const implicitBreakBeforePatterns = [
   "第一个", "第二个", "第三个", "第四个", "第一点", "第二点", "第三点", "第四点", "也不应该",
   "最近项目", "本地工作区", "视频上传后", "导出字幕前", "服务返回失败",
   "这对普通用户来说", "没有按照", "时间重叠也不应该", "而应该", "并保留",
+  "翻译只应该", "源语言和目标语言",
 ];
 
 const phraseBreakAfterPatterns = [
@@ -78,7 +81,7 @@ const protectedCjkSplitPairs = new Set([
 const protectedCjkSplitPhrases = [
   "普通用户来说", "普通用户", "产品经理", "上线计划", "专有名词", "开始转写页面",
   "到底失败在哪里", "服务返回失败", "返回失败", "把翻译", "直接可以", "视频上传后应该",
-  "这对普通用户来说", "合理的断句",
+  "这对普通用户来说", "合理的断句", "转写不是翻译", "翻译只应该", "源语言和目标语言",
 ];
 
 function startsWithPattern(text, patterns) {
@@ -93,10 +96,12 @@ function isProtectedCjkPatternBoundary(value, index, pattern) {
   const text = String(value || "");
   if (pattern === "不是" && text.slice(index - 1, index + pattern.length) === "是不是") return true;
   if (pattern === "不是" && text[index - 1] === "而") return true;
+  if (pattern === "不是" && text.slice(index - 2, index) === "转写") return true;
   if (pattern === "不要" && text[index - 1] === "先") return true;
   if (pattern === "只是" && text[index - 1] === "能") return true;
   if (pattern === "应该" && text[index - 1] === "不") return true;
   if (pattern === "应该" && text[index - 1] === "后") return true;
+  if (pattern === "应该" && text[index - 1] === "只") return true;
   if (pattern === "也不应该" && text.slice(index - 4, index) === "时间重叠") return true;
   if (pattern === "可以" && text[index - 1] === "不") return true;
   if (pattern === "可以" && text[index - 1] === "否") return true;
@@ -1176,6 +1181,23 @@ function trimRepeatedBoundaryPrefix(previousText, currentText) {
   return current;
 }
 
+function trimPartialProtectedPhraseSuffix(previousText, currentText) {
+  const previous = normalizeAsrText(previousText);
+  const current = normalizeAsrText(currentText);
+  if (!previous || !current) return null;
+  for (const phrase of protectedCjkSplitPhrases) {
+    if (!current.startsWith(phrase)) continue;
+    const maxPrefixLength = Math.min(phrase.length - 1, previous.length);
+    for (let size = maxPrefixLength; size >= 3; size -= 1) {
+      const prefix = phrase.slice(0, size);
+      if (!previous.endsWith(prefix)) continue;
+      const trimmed = normalizeAsrText(previous.slice(0, -prefix.length));
+      if (transcriptWeight(trimmed) >= 4) return trimmed;
+    }
+  }
+  return null;
+}
+
 export function dedupeAdjacentAsrRows(rows, maxGapSeconds = 1.2) {
   const sorted = [...(Array.isArray(rows) ? rows : [])].sort((a, b) => {
     const startDiff = finiteNumber(a?.start, 0) - finiteNumber(b?.start, 0);
@@ -1196,6 +1218,21 @@ export function dedupeAdjacentAsrRows(rows, maxGapSeconds = 1.2) {
         end: Math.max(finiteNumber(previous.end, 0), finiteNumber(row.end, 0)),
       };
       continue;
+    }
+    if (closeToPrevious && compactOverlapText(previousText).includes(compactOverlapText(text)) && transcriptWeight(text) <= 10) {
+      result[result.length - 1] = {
+        ...previous,
+        end: Math.max(finiteNumber(previous.end, 0), finiteNumber(row.end, 0)),
+      };
+      continue;
+    }
+    if (closeToPrevious) {
+      const trimmedPrevious = trimPartialProtectedPhraseSuffix(previousText, text);
+      if (trimmedPrevious) {
+        result[result.length - 1] = { ...previous, text: trimmedPrevious };
+        result.push({ ...row, text });
+        continue;
+      }
     }
     if (closeToPrevious) {
       const trimmedText = trimRepeatedBoundaryPrefix(previousText, text);

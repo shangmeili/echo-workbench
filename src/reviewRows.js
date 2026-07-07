@@ -251,12 +251,13 @@ export function repairReviewStructure(inputRows = [], options = {}) {
     stableShouldPreserveBoundedTiming ? stableTimelineRows : stablePressureRows,
     options.maxEnd,
   );
+  const finalRows = fitRowsWithinMaxEnd(repairAsrTimeline(dedupeAdjacentAsrRows(repairedRows)), options.maxEnd);
   const mergedRowCount = Math.max(0, timedRows.length + readableRepair.addedRowCount + finalReadableRepair.addedRowCount + stableReadableRepair.addedRowCount - stableReadableRepair.rows.length);
   return {
     splitRowCount: readableRepair.splitRowCount + finalReadableRepair.splitRowCount + stableReadableRepair.splitRowCount,
     addedRowCount: readableRepair.addedRowCount + finalReadableRepair.addedRowCount + stableReadableRepair.addedRowCount,
     mergedRowCount,
-    rows: normalizeReviewRows(repairedRows),
+    rows: normalizeReviewRows(finalRows),
   };
 }
 
