@@ -211,16 +211,21 @@ function repairTimingPressureRows(inputRows = []) {
 }
 
 export function repairReviewStructure(inputRows = [], options = {}) {
+  const boundedEnd = Number(options.maxEnd) || 0;
   const timedRows = repairAsrTimeline(dedupeAdjacentAsrRows(inputRows));
   const pressureMergedRows = mergeTimingPressureAdjacentRows(timedRows);
   const mergedRows = mergeShortAdjacentAsrRows(pressureMergedRows, { maxGapSeconds: 0.85, maxCombinedDuration: 5.8 });
   const readableRepair = repairReadableReviewRows(repairAsrTimeline(mergedRows));
-  const timedReadableRows = repairTimingPressureRows(readableRepair.rows);
+  const timedReadableRows = boundedEnd > 0
+    ? repairAsrTimeline(readableRepair.rows)
+    : repairTimingPressureRows(readableRepair.rows);
   const finalMergedRows = mergeShortAdjacentAsrRows(timedReadableRows, { maxGapSeconds: 0.85, maxCombinedDuration: 5.8 });
-  const repairedRows = fitRowsWithinMaxEnd(
-    repairAsrTimeline(repairTimingPressureRows(finalMergedRows)),
-    options.maxEnd,
-  );
+  const timelineRows = repairAsrTimeline(finalMergedRows);
+  const pressureRows = repairAsrTimeline(repairTimingPressureRows(finalMergedRows));
+  const timelineLastEnd = Math.max(...timelineRows.map((row) => Number(row.end) || 0), 0);
+  const pressureLastEnd = Math.max(...pressureRows.map((row) => Number(row.end) || 0), 0);
+  const shouldPreserveBoundedTiming = boundedEnd > 0 && timelineLastEnd <= boundedEnd + 0.001 && pressureLastEnd > boundedEnd + 0.001;
+  const repairedRows = fitRowsWithinMaxEnd(shouldPreserveBoundedTiming ? timelineRows : pressureRows, options.maxEnd);
   const mergedRowCount = Math.max(0, timedRows.length + readableRepair.addedRowCount - finalMergedRows.length);
   return {
     ...readableRepair,

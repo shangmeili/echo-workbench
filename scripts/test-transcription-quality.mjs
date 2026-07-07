@@ -244,6 +244,35 @@ assert.ok(
   `bounded media repair should not create subtitle timecodes beyond media duration: ${boundedMediaRepair.at(-1).end}`,
 );
 
+const validBoundedAsrTimingRows = repairReviewStructure([
+  { id: "a", start: 0, end: 0.5, speaker: "未标注", text: "音频转写第一句。", translation: "" },
+  { id: "b", start: 0.6, end: 0.95, speaker: "未标注", text: "音频转写第二句。", translation: "" },
+], { maxEnd: 1 }).rows;
+assert.deepEqual(
+  validBoundedAsrTimingRows.map((row) => Number(row.start.toFixed(3))),
+  [0, 0.6],
+  "bounded repair should preserve valid ASR seek points instead of compressing them",
+);
+
+const explicitSegmentRows = rowsFromAsrResult({
+  segments: [
+    { start: 0, end: 0.5, text: "音频转写第一句。" },
+    { start: 0.6, end: 0.95, text: "音频转写第二句。" },
+  ],
+}, 1);
+assert.deepEqual(
+  explicitSegmentRows.map((row) => Number(row.start.toFixed(2))),
+  [0, 0.6],
+  "explicit ASR segment timing should not be compressed by minimum subtitle duration repair",
+);
+
+const untimedFallbackRows = rowsFromAsrResult({ text: "音频转写第一句。音频转写第二句。" }, 1);
+assert.deepEqual(
+  untimedFallbackRows.map((row) => Number(row.start.toFixed(2))),
+  [0, 0.55],
+  "untimed fallback should keep a small seek gap instead of hard-joining subtitle rows",
+);
+
 const importedBoundaryDuplicateRows = normalizeLikeWorkbench(parseSubtitle([
   "1",
   "00:00:00,000 --> 00:00:02,400",

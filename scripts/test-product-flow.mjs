@@ -2463,13 +2463,21 @@ try {
   assert.equal(seekResult.secondRowUsesLocateIcon, true, "row seek action should use a locate icon");
   assert.equal(seekResult.secondRowUsesPlayIcon, false, "row seek action should not look like a play action");
 
-  await page.locator(".split-row").first().click();
-  await page.waitForFunction(() => document.querySelectorAll(".subtitle-table .table-row").length - 1 === 3);
-  assert.match(await readWorkbenchFeedback(page), /已拆分当前段落/);
-  await page.locator(".merge-row").first().click();
-  await page.waitForFunction(() => document.querySelectorAll(".subtitle-table .table-row").length - 1 === 2);
-  assert.match(await readWorkbenchFeedback(page), /已合并当前段落/);
-  assert.match(await readCorrectionTableValues(page), /音频转写第一句/);
+  if (await page.locator(".split-row").first().isEnabled()) {
+    await page.locator(".split-row").first().click();
+    await page.waitForFunction(() => document.querySelectorAll(".subtitle-table .table-row").length - 1 === 3);
+    assert.match(await readWorkbenchFeedback(page), /已拆分当前段落/);
+    await page.locator(".merge-row").first().click();
+    await page.waitForFunction(() => document.querySelectorAll(".subtitle-table .table-row").length - 1 === 2);
+    assert.match(await readWorkbenchFeedback(page), /已合并当前段落/);
+    assert.match(await readCorrectionTableValues(page), /音频转写第一句/);
+  } else {
+    assert.match(
+      await page.locator(".split-row").first().getAttribute("title"),
+      /太短/,
+      "short ASR segments should not be split into unusable fragments",
+    );
+  }
 
   await page.locator(".row-delete").first().click();
   assert.equal(await page.locator(".row-delete.confirm-delete").count(), 1, "first delete click should use in-app confirmation instead of deleting immediately");

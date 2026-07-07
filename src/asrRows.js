@@ -633,8 +633,9 @@ function rowsFromSegment(segment, segmentIndex) {
   if (!text) return [];
   const start = finiteNumber(segment?.start ?? segment?.start_time ?? segment?.startTime, segmentIndex * 3);
   const inferredEnd = start + Math.max(transcriptWeight(text) * 0.22, 2);
-  const rawEnd = finiteNumber(segment?.end ?? segment?.end_time ?? segment?.endTime, inferredEnd);
-  const end = Math.max(start + 0.5, rawEnd);
+  const explicitEnd = segment?.end ?? segment?.end_time ?? segment?.endTime;
+  const rawEnd = finiteNumber(explicitEnd, inferredEnd);
+  const end = Math.max(start + (explicitEnd == null ? 0.5 : 0.35), rawEnd);
   const speaker = segment.speaker || segment.speaker_label || "未标注";
   const sentences = splitTranscriptIntoSentences(rawText);
   if (sentences.length <= 1 && transcriptWeight(text) <= maxMergedUnits(text)) {
@@ -883,22 +884,25 @@ export function rowsFromAsrResult(result, fallbackDuration = 0) {
   if (!sentences.length) return [];
   const duration = resolveUntimedTranscriptDuration(sentences, fallbackDuration);
   const totalWeight = sentences.reduce((sum, item) => sum + transcriptWeight(item), 0) || sentences.length || 1;
-  const minimumSegmentDuration = Math.min(1.2, Math.max(0.45, (duration / Math.max(sentences.length, 1)) * 0.55));
+  const gapSeconds = sentences.length > 1 && duration >= sentences.length * 0.45 + (sentences.length - 1) * 0.1 ? 0.1 : 0;
+  const speechDuration = Math.max(0.5, duration - gapSeconds * Math.max(0, sentences.length - 1));
+  const minimumSegmentDuration = Math.min(1.2, Math.max(0.35, (speechDuration / Math.max(sentences.length, 1)) * 0.55));
   let cursor = 0;
   return repairAsrTimeline(sentences.map((text, index) => {
     const isLast = index === sentences.length - 1;
     const remainingSegments = sentences.length - index - 1;
-    const remainingDuration = Math.max(0.5, duration - cursor);
-    const proportional = duration * (transcriptWeight(text) / totalWeight);
+    const remainingGapDuration = gapSeconds * remainingSegments;
+    const remainingDuration = Math.max(0.35, duration - cursor - remainingGapDuration);
+    const proportional = speechDuration * (transcriptWeight(text) / totalWeight);
     const segmentDuration = isLast ? remainingDuration : Math.max(proportional, minimumSegmentDuration);
     const start = cursor;
-    const latestEnd = Math.max(start + 0.35, duration - remainingSegments * minimumSegmentDuration);
+    const latestEnd = Math.max(start + 0.35, duration - remainingGapDuration - remainingSegments * minimumSegmentDuration);
     const end = isLast ? duration : Math.min(latestEnd, start + segmentDuration);
-    cursor = end;
+    cursor = end + (isLast ? 0 : gapSeconds);
     return {
       id: `asr-text-${Date.now()}-${index}`,
       start,
-      end: Math.max(start + 0.5, end),
+      end: Math.max(start + 0.35, end),
       speaker: "未标注",
       text,
       translation: "",

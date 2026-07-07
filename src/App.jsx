@@ -708,8 +708,16 @@ function offsetRows(rows, offset) {
   }));
 }
 
-function repairReviewStructureUnlessEmpty(rows = []) {
-  return repairReviewStructurePreservingEmpty(rows);
+function mediaDurationLimit(mediaLike) {
+  return Number(mediaLike?.asrAudio?.duration || mediaLike?.duration || 0) || 0;
+}
+
+function workspaceProjectDurationLimit(project) {
+  return Number(project?.asrAudio?.duration || project?.media?.duration || 0) || 0;
+}
+
+function repairReviewStructureUnlessEmpty(rows = [], options = {}) {
+  return repairReviewStructurePreservingEmpty(rows, options);
 }
 
 function reviewRowsChanged(previousRows = [], nextRows = []) {
@@ -1592,7 +1600,10 @@ function WorkbenchView({ activeTool, onBackHome, rows, setRows, media, setMedia,
   });
 
   const restoreEditSnapshot = (snapshot) => {
-    const restoredRows = repairReviewStructureUnlessEmpty(snapshot.rows.map((row) => ({ ...row }))).rows;
+    const restoredRows = repairReviewStructureUnlessEmpty(
+      snapshot.rows.map((row) => ({ ...row })),
+      { maxEnd: mediaDurationLimit(snapshot.media) },
+    ).rows;
     setRows(restoredRows);
     setMedia(cloneMediaState(snapshot.media));
     setWorkspaceState({ ...defaultWorkspaceState, ...snapshot.workspaceState });
@@ -1674,7 +1685,7 @@ function WorkbenchView({ activeTool, onBackHome, rows, setRows, media, setMedia,
       textEditSnapshotRef.current = null;
     }
     if (field === "text" && options.repairStructure) {
-      const repairResult = repairReviewStructureUnlessEmpty(rows);
+      const repairResult = repairReviewStructureUnlessEmpty(rows, structureRepairOptions);
       if (!reviewRowsChanged(rows, repairResult.rows)) return;
       setRows(repairResult.rows);
       if (!repairResult.rows.some((row) => row.id === rowId)) {
@@ -1879,6 +1890,7 @@ function WorkbenchView({ activeTool, onBackHome, rows, setRows, media, setMedia,
   const videoHasAudioTrack = Boolean(mediaType.startsWith("video") && (media?.asrAudio?.file || media?.asrAudio?.workspaceUrl));
   const transcriptionFile = media?.asrAudio?.file || media?.file || asrMedia;
   const transcriptionDuration = media?.asrAudio?.duration || media?.duration || 0;
+  const structureRepairOptions = { maxEnd: transcriptionDuration };
   const mediaSubmitsOriginal = shouldSubmitOriginalMediaForAsr(transcriptionFile, asrProvider, transcriptionDuration);
   const mediaNeedsBrowserDecode = shouldDecodeMediaForAsr(transcriptionFile, asrProvider, transcriptionDuration);
   const videoUsesEmbeddedAudio = Boolean(mediaType.startsWith("video") && !media.asrAudio?.file);
@@ -2252,7 +2264,7 @@ function WorkbenchView({ activeTool, onBackHome, rows, setRows, media, setMedia,
 
   const repairLongSubtitleRows = () => {
     if (!longSubtitleIssueRows.length) return;
-    const repairResult = repairReviewStructureUnlessEmpty(rows);
+    const repairResult = repairReviewStructureUnlessEmpty(rows, structureRepairOptions);
     if (repairResult.addedRowCount <= 0) {
       jumpToNextQualityIssue();
       setMessage("当前长段缺少稳定断点，已定位到对应段落，可在校对区直接编辑。");
@@ -2317,7 +2329,7 @@ function WorkbenchView({ activeTool, onBackHome, rows, setRows, media, setMedia,
       return;
     }
     pushUndoSnapshot(scope === "current" ? "替换当前匹配" : "批量替换文本");
-    const repairResult = repairReviewStructureUnlessEmpty(nextRows);
+    const repairResult = repairReviewStructureUnlessEmpty(nextRows, structureRepairOptions);
     setRows(repairResult.rows);
     if (scope === "current" && currentTargetId) setSelectedRowId(currentTargetId);
     markRowsEdited(repairResult.rows.length);
@@ -2886,7 +2898,7 @@ ${rawText}`;
     }
     if (!confirmInterruptingWork("导入字幕或转写文件")) return;
     const text = await file.text();
-    const repairResult = repairReviewStructure(parseSubtitle(text));
+    const repairResult = repairReviewStructure(parseSubtitle(text), structureRepairOptions);
     const parsed = repairResult.rows;
     if (!parsed.length) {
       setMessage("没有解析到可导入的字幕或文本内容。");
@@ -2900,7 +2912,7 @@ ${rawText}`;
       setMessage("请先配置本地工作区，再导入字幕或转写文本。");
       return;
     }
-    const repairResult = repairReviewStructure(parseSubtitle(manualImport));
+    const repairResult = repairReviewStructure(parseSubtitle(manualImport), structureRepairOptions);
     const parsed = repairResult.rows;
     if (!parsed.length) {
       setMessage("请输入可导入的字幕或转写文本。");
@@ -2953,7 +2965,7 @@ ${rawText}`;
           ...(item.reviewStatus === "confirmed" ? { reviewStatus: "pending" } : {}),
         }
         : item));
-      return repairReviewStructureUnlessEmpty(editedRows).rows;
+      return repairReviewStructureUnlessEmpty(editedRows, structureRepairOptions).rows;
     });
     markRowsEdited(rows.length);
     return true;
@@ -2999,7 +3011,7 @@ ${JSON.stringify(chunk.map((row) => ({ id: row.id, start: row.start, end: row.en
     setBusy("correct");
     setMessage("");
     try {
-      const repairResult = repairReviewStructureUnlessEmpty(await correctRowsWithModel(rows, { signal: abortController.signal }));
+      const repairResult = repairReviewStructureUnlessEmpty(await correctRowsWithModel(rows, { signal: abortController.signal }), structureRepairOptions);
       const corrected = repairResult.rows;
       throwIfModelAborted(abortController.signal);
       pushUndoSnapshot(`校正${segmentKind}`);
@@ -3010,7 +3022,7 @@ ${JSON.stringify(chunk.map((row) => ({ id: row.id, start: row.start, end: row.en
         time: formatProjectTime(),
       });
       const splitText = repairResult.splitRowCount ? `已自动拆分 ${repairResult.splitRowCount} 条过长段落。` : "";
-      setMessage(`已校正 ${corrected.length} 条${segmentKind}文本。${splitText}请继续核对时间轴和专有名词。`);
+      setMessage(`已校正 ${corrected.length} 条${segmentKind}文本。${splitText}可继续核对文本和专有名词。`);
     } catch (error) {
       if (isAbortError(error)) return;
       setMessage(error.message || `${segmentKind}校正失败。`);
@@ -3059,7 +3071,7 @@ ${JSON.stringify(chunk.map((row) => ({ id: row.id, start: row.start, end: row.en
       newRow,
       ...rows.slice(insertIndex),
     ];
-    setRows(normalizeReviewRows(repairAsrTimeline(nextRows)));
+    setRows(repairReviewStructureUnlessEmpty(nextRows, structureRepairOptions).rows);
     markRowsEdited(nextRows.length);
     setSelectedRowId(newRow.id);
   };
@@ -3292,7 +3304,7 @@ ${JSON.stringify(chunk.map((row) => ({ id: row.id, start: row.start, end: row.en
       ...rows.slice(index + 2),
     ];
     pushUndoSnapshot("合并段落");
-    const repairResult = repairReviewStructureUnlessEmpty(nextRows);
+    const repairResult = repairReviewStructureUnlessEmpty(nextRows, structureRepairOptions);
     setRows(repairResult.rows);
     markRowsEdited(repairResult.rows.length);
     const splitText = repairResult.splitRowCount ? `系统已重新拆分 ${repairResult.splitRowCount} 条过长段落。` : "";
@@ -3320,7 +3332,7 @@ ${JSON.stringify(chunk.map((row) => ({ id: row.id, start: row.start, end: row.en
       reviewStatus: row.reviewStatus === "confirmed" ? "pending" : row.reviewStatus,
     }));
     pushUndoSnapshot(effectiveOffset < 0 ? "整体提前时间码" : "整体延后时间码");
-    const repairResult = repairReviewStructureUnlessEmpty(nextRows);
+    const repairResult = repairReviewStructureUnlessEmpty(nextRows, structureRepairOptions);
     setRows(repairResult.rows);
     markRowsEdited(repairResult.rows.length);
     setMessage(`已将全部时间码${effectiveOffset < 0 ? "提前" : "延后"} ${Math.abs(effectiveOffset).toFixed(1)} 秒，可使用撤销恢复。`);
@@ -3335,7 +3347,7 @@ ${JSON.stringify(chunk.map((row) => ({ id: row.id, start: row.start, end: row.en
     const targetIndex = rows.findIndex((row) => row.id === id);
     const nextRows = rows.filter((row) => row.id !== id);
     pushUndoSnapshot("删除段落");
-    const repairResult = repairReviewStructureUnlessEmpty(nextRows);
+    const repairResult = repairReviewStructureUnlessEmpty(nextRows, structureRepairOptions);
     setRows(repairResult.rows);
     markRowsEdited(repairResult.rows.length);
     setSelectedRowId(repairResult.rows[Math.min(Math.max(targetIndex, 0), repairResult.rows.length - 1)]?.id || "");
@@ -3364,7 +3376,7 @@ ${JSON.stringify(chunk.map((row) => ({ id: row.id, start: row.start, end: row.en
 
   const exportCurrentRows = (format) => {
     let rowsToExport = rows;
-    const exportRepair = repairReviewStructureUnlessEmpty(rowsToExport);
+    const exportRepair = repairReviewStructureUnlessEmpty(rowsToExport, structureRepairOptions);
     if (reviewRowsChanged(rowsToExport, exportRepair.rows)) {
       const repairedRows = exportRepair.rows;
       if (hasTimingExportIssue(repairedRows)) {
@@ -5988,7 +6000,7 @@ export function App() {
     const workspaceProject = await loadWorkspaceProject(projectId);
     if (!isCurrent()) return { stale: true };
     const repairedProjectRows = Array.isArray(workspaceProject.rows)
-      ? repairReviewStructureUnlessEmpty(workspaceProject.rows)
+      ? repairReviewStructureUnlessEmpty(workspaceProject.rows, { maxEnd: workspaceProjectDurationLimit(workspaceProject) })
       : { rows: [], splitRowCount: 0, addedRowCount: 0, mergedRowCount: 0 };
     const recent = {
       ...(fallbackItem || {}),
