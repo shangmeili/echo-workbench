@@ -206,6 +206,41 @@ assert.deepEqual(
 );
 
 assert.deepEqual(
+  splitTranscriptIntoSentences("导出字幕前系统应该自动整理时间轴用户不应该自己去修这些结构问题"),
+  [
+    "导出字幕前",
+    "系统应该自动整理时间轴",
+    "用户不应该自己去修",
+    "这些结构问题",
+  ],
+);
+
+assert.deepEqual(
+  splitTranscriptIntoSentences("服务返回失败时页面需要说明具体原因不能只显示开始转写又恢复原状"),
+  [
+    "服务返回失败时页面",
+    "需要说明具体原因不能只显示开始转写",
+    "又恢复原状",
+  ],
+);
+
+assert.deepEqual(
+  splitTranscriptIntoSentences("视频上传后应该直接可以开始转写如果模型返回的内容没有标点"),
+  [
+    "视频上传后应该直接可以开始转写",
+    "如果模型返回的内容没有标点",
+  ],
+);
+
+assert.deepEqual(
+  splitTranscriptIntoSentences("界面不应该把翻译放在主流程前面也不应该让转写按钮藏在后处理里面"),
+  [
+    "界面不应该把翻译放在主流程前面",
+    "也不应该让转写按钮藏在后处理里面",
+  ],
+);
+
+assert.deepEqual(
   splitTranscriptIntoSentences("昨天我们看了一个会议录屏里面有产品经理开发和运营三个人讨论上线计划大家说话比较快中间还有一些专有名词比如回响工作台和模型配置"),
   [
     "昨天我们看了一个会议录屏里面有",
@@ -218,9 +253,12 @@ assert.deepEqual(
 for (const rows of [
   splitTranscriptIntoSentences("我们现在看到的情况是点击开始转写以后按钮会变成转写中但是过一段时间又恢复成开始转写页面没有告诉我到底失败在哪里这对普通用户来说是不可接受的"),
   splitTranscriptIntoSentences("昨天我们看了一个会议录屏里面有产品经理开发和运营三个人讨论上线计划大家说话比较快中间还有一些专有名词比如回响工作台和模型配置"),
+  splitTranscriptIntoSentences("服务返回失败时页面需要说明具体原因不能只显示开始转写又恢复原状"),
+  splitTranscriptIntoSentences("视频上传后应该直接可以开始转写如果模型返回的内容没有标点"),
+  splitTranscriptIntoSentences("界面不应该把翻译放在主流程前面也不应该让转写按钮藏在后处理里面"),
 ]) {
   const joined = rows.join("|");
-  assert.doesNotMatch(joined, /普通\|用户|用户\|来说|产品\|经理|上线\|计划|专有\|名词/, "Chinese hard split should not break common product and subtitle-review phrases");
+  assert.doesNotMatch(joined, /普通\|用户|用户\|来说|产品\|经理|上线\|计划|专有\|名词|返\|回失败|到\|底|把\|翻译|视频上传后\|应该|直接\|可以/, "Chinese hard split should not break common product and subtitle-review phrases");
 }
 
 assert.ok(
