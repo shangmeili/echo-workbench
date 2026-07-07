@@ -240,6 +240,9 @@ const englishBreakBeforeWords = new Set([
 const englishWeakEndingWords = new Set([
   "a", "an", "the", "and", "or", "but", "because", "that", "which", "who", "to", "of",
   "for", "in", "on", "at", "with", "from", "into", "as", "by",
+  "can", "could", "should", "would", "will", "may", "might", "must", "shall",
+  "is", "are", "was", "were", "be", "been", "being", "has", "have", "had",
+  "then", "also", "finally",
 ]);
 
 const englishSentenceStartWords = new Set([
@@ -323,7 +326,7 @@ function chooseReadableEnglishSplitIndex(words, maxWords) {
     if (englishBreakBeforeWords.has(currentClean)) score -= 4;
     if (currentClean === "and" && tailWords <= 5) score += 10;
     if (englishWeakEndingWords.has(currentClean)) score += 10;
-    if (englishWeakEndingWords.has(beforeClean)) score += 8;
+    if (englishWeakEndingWords.has(beforeClean)) score += 14;
     if (tailWords < 4) score += 6;
     candidates.push({ index, score });
   }

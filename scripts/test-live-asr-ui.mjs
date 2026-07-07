@@ -28,6 +28,9 @@ const LONG_SAMPLE_TEXT = [
   "Users should not be asked to solve time overlap or oversized subtitle problems by themselves.",
 ].join(" ");
 
+const WEAK_ENGLISH_ROW_ENDING_PATTERN = /\b(?:and|or|but|because|that|which|who|to|of|for|in|on|at|with|from|into|as|by|can|could|should|would|will|may|might|must|shall|is|are|was|were|be|been|being|has|have|had|then|also|finally)$/i;
+const LEAD_IN_ONLY_PATTERN = /^(?:first|second|third|next|then|finally|also|now|so|well)[,]?$/i;
+
 function usage() {
   return [
     "Usage:",
@@ -144,6 +147,22 @@ function maxSubtitleEndSeconds(text) {
   return Math.max(...matches.map((match) => parseTimecodeSeconds(match[2])).filter(Number.isFinite));
 }
 
+async function editableRowTexts(page) {
+  return page.locator(".subtitle-table .table-row:not(.table-head) .list-text-stack span:first-child").allTextContents();
+}
+
+async function assertReadableEnglishRows(page, label) {
+  const rows = await editableRowTexts(page);
+  assert.ok(rows.length > 0, `${label}: no editable row text found`);
+  rows.forEach((row, index) => {
+    const text = String(row || "").trim();
+    if (!/[A-Za-z]/.test(text) || /[\u4e00-\u9fa5]/.test(text)) return;
+    const clean = text.replace(/[,.!?;:]+$/g, "").trim();
+    assert.doesNotMatch(clean, LEAD_IN_ONLY_PATTERN, `${label}: row ${index + 1} should not be an isolated lead-in word: ${text}`);
+    assert.doesNotMatch(clean, WEAK_ENGLISH_ROW_ENDING_PATTERN, `${label}: row ${index + 1} should not end on a weak English word: ${text}`);
+  });
+}
+
 async function openAudioWorkbench(page, baseUrl, samplePath, sourceLanguage) {
   await page.goto(`${baseUrl}/#workbench/audio-transcribe`, { waitUntil: "networkidle" });
   await page.getByLabel("源语言").selectOption({ label: sourceLanguage });
@@ -174,6 +193,7 @@ async function verifySuccessfulTranscription(page, baseUrl, samplePath) {
     /时间重叠|时间无效|单条过长|阅读过快|时长过短|下一处提示|拆分长段/,
     "live ASR result should not expose repairable structure issues as user-facing proofreading prompts",
   );
+  await assertReadableEnglishRows(page, "short live ASR result");
   const maxEnd = maxSubtitleEndSeconds(tableText);
   assert.ok(maxEnd > 0, `transcription table should expose subtitle timecodes: ${tableText}`);
   assert.ok(maxEnd < 12, `short live-ASR sample should not be stretched across the media fallback duration, got ${maxEnd}s`);
@@ -201,6 +221,7 @@ async function verifyLongTranscriptionRepair(page, baseUrl, samplePath) {
     /时间重叠|时间无效|单条过长|阅读过快|时长过短|下一处提示|拆分长段/,
     "long live ASR result should be automatically repaired before proofreading",
   );
+  await assertReadableEnglishRows(page, "long live ASR result");
   const maxEnd = maxSubtitleEndSeconds(tableText);
   assert.ok(maxEnd > 5, `long transcription table should expose meaningful timecodes: ${tableText}`);
   assert.ok(maxEnd < 60, `long live-ASR sample should not be stretched across an unrealistic duration, got ${maxEnd}s`);
