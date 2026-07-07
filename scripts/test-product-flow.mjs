@@ -252,14 +252,14 @@ async function assertEditorKeyboardNavigation(page) {
   const editor = page.locator(".current-segment-card .subtitle-source-textarea");
   await editor.focus();
   const firstText = await editor.inputValue();
-  await page.keyboard.press(process.platform === "darwin" ? "Meta+ArrowDown" : "Control+ArrowDown");
+  await page.keyboard.press("Control+ArrowDown");
   await page.waitForFunction((previous) => {
     const field = document.querySelector(".current-segment-card .subtitle-source-textarea");
     return field && field.value && field.value !== previous;
   }, firstText);
   const secondText = await editor.inputValue();
   assert.notEqual(secondText, firstText, "Ctrl+ArrowDown should move focus to the next segment");
-  await page.keyboard.press(process.platform === "darwin" ? "Meta+ArrowUp" : "Control+ArrowUp");
+  await page.keyboard.press("Control+ArrowUp");
   await page.waitForFunction((expected) => document.querySelector(".current-segment-card .subtitle-source-textarea")?.value === expected, firstText);
   assert.equal(await editor.inputValue(), firstText, "Ctrl+ArrowUp should return to the previous segment");
 }
@@ -1611,8 +1611,10 @@ try {
 
   await page.getByLabel("当前段落开始时间").fill("00:04.500");
   await page.getByLabel("当前段落开始时间").press("Enter");
-  await page.getByLabel("当前段落结束时间").fill("00:05.500");
+  await page.getByLabel("当前段落结束时间").fill("00:07.500");
   await page.getByLabel("当前段落结束时间").press("Enter");
+  await page.waitForFunction(() => document.querySelector(".review-list-row")?.innerText.includes("00:04.500 - 00:06.750"));
+  assert.doesNotMatch(await page.locator(".current-segment-card").innerText(), /时间重叠|时间无效/, "manual time edits should be normalized immediately instead of leaving timeline errors for the user");
   const speakerAssignment = page.getByLabel("当前段落说话人归属");
   await speakerAssignment.waitFor({ state: "visible" });
   assert.equal(await speakerAssignment.inputValue(), "Speaker 1", "current segment should show the parsed speaker in a compact assignment control");
@@ -1641,7 +1643,7 @@ try {
   await page.waitForFunction(() => document.querySelector(".review-list-row")?.innerText.includes("Speaker 1"));
   await page.locator(".review-list-row").first().click();
   await page.waitForFunction(() => document.querySelector("[aria-label='当前段落说话人归属']")?.value === "Speaker 1");
-  await page.waitForFunction(() => document.querySelector(".review-list-row")?.innerText.includes("00:04.500 - 00:05.500"));
+  await page.waitForFunction(() => document.querySelector(".review-list-row")?.innerText.includes("00:04.500 - 00:06.750"));
   const editedRangeDownloadPromise = page.waitForEvent("download");
   await page.getByRole("button", { name: /导出 TXT/ }).click();
   const editedRangeDownload = await editedRangeDownloadPromise;

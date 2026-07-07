@@ -2895,10 +2895,17 @@ ${rawText}`;
     }
     if (Math.abs((row[field] || 0) - parsed) < 0.001) return true;
     pushUndoSnapshot("编辑时间码");
-    updateRow(rowId, {
-      [field]: parsed,
-      ...(row.reviewStatus === "confirmed" ? { reviewStatus: "pending" } : {}),
+    setRows((current) => {
+      const editedRows = current.map((item) => (item.id === rowId
+        ? {
+          ...item,
+          [field]: parsed,
+          ...(item.reviewStatus === "confirmed" ? { reviewStatus: "pending" } : {}),
+        }
+        : item));
+      return normalizeReviewRows(repairAsrTimeline(editedRows));
     });
+    markRowsEdited(rows.length);
     return true;
   };
 
