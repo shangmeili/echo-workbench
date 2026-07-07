@@ -2762,7 +2762,7 @@ ${rawText}`;
           correctionText = `自动校正未完成：${error.message || "文本模型请求失败"}。已保留 ASR 原始结果。`;
         }
       }
-      const readableRepair = repairReviewStructure(finalRows);
+      const readableRepair = repairReviewStructure(finalRows, { maxEnd: asrSource.duration });
       const reviewRows = readableRepair.rows;
       pushUndoSnapshot("生成转写结果");
       setRows(reviewRows);

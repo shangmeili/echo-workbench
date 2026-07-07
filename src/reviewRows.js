@@ -164,6 +164,39 @@ function mergeTimingPressureAdjacentRows(inputRows = []) {
   return normalizeReviewRows(result);
 }
 
+function boundedNumber(value, fallback = 0) {
+  const number = Number(value);
+  return Number.isFinite(number) ? number : fallback;
+}
+
+function fitRowsWithinMaxEnd(inputRows = [], maxEnd = 0) {
+  const rows = normalizeReviewRows(inputRows);
+  const boundedEnd = Number(maxEnd);
+  if (!rows.length || !Number.isFinite(boundedEnd) || boundedEnd <= 0) return rows;
+  const lastEnd = Math.max(...rows.map((row) => boundedNumber(row.end, 0)), 0);
+  if (lastEnd <= boundedEnd + 0.001) return rows;
+
+  const firstStart = Math.max(0, Math.min(boundedNumber(rows[0].start, 0), boundedEnd));
+  const available = Math.max(0.05 * rows.length, boundedEnd - firstStart);
+  const minimumDuration = Math.min(0.35, Math.max(0.05, (available / rows.length) * 0.35));
+  const totalMinimum = minimumDuration * rows.length;
+  const flexibleDuration = Math.max(0, available - totalMinimum);
+  const weights = rows.map((row) => Math.max(1, subtitleTextLengthForTiming(row.text)));
+  const totalWeight = weights.reduce((sum, weight) => sum + weight, 0) || rows.length;
+  let cursor = firstStart;
+
+  return rows.map((row, index) => {
+    const isLast = index === rows.length - 1;
+    const targetDuration = isLast
+      ? Math.max(0.05, boundedEnd - cursor)
+      : minimumDuration + flexibleDuration * (weights[index] / totalWeight);
+    const start = Math.min(cursor, Math.max(0, boundedEnd - 0.05));
+    const end = isLast ? boundedEnd : Math.min(boundedEnd, Math.max(start + 0.05, start + targetDuration));
+    cursor = end;
+    return { ...row, start, end: Math.max(start + 0.01, end) };
+  });
+}
+
 function repairTimingPressureRows(inputRows = []) {
   const rows = normalizeReviewRows(inputRows);
   let previousEnd = 0;
@@ -177,14 +210,17 @@ function repairTimingPressureRows(inputRows = []) {
   });
 }
 
-export function repairReviewStructure(inputRows = []) {
+export function repairReviewStructure(inputRows = [], options = {}) {
   const timedRows = repairAsrTimeline(dedupeAdjacentAsrRows(inputRows));
   const pressureMergedRows = mergeTimingPressureAdjacentRows(timedRows);
   const mergedRows = mergeShortAdjacentAsrRows(pressureMergedRows, { maxGapSeconds: 0.85, maxCombinedDuration: 5.8 });
   const readableRepair = repairReadableReviewRows(repairAsrTimeline(mergedRows));
   const timedReadableRows = repairTimingPressureRows(readableRepair.rows);
   const finalMergedRows = mergeShortAdjacentAsrRows(timedReadableRows, { maxGapSeconds: 0.85, maxCombinedDuration: 5.8 });
-  const repairedRows = repairAsrTimeline(repairTimingPressureRows(finalMergedRows));
+  const repairedRows = fitRowsWithinMaxEnd(
+    repairAsrTimeline(repairTimingPressureRows(finalMergedRows)),
+    options.maxEnd,
+  );
   const mergedRowCount = Math.max(0, timedRows.length + readableRepair.addedRowCount - finalMergedRows.length);
   return {
     ...readableRepair,
@@ -210,7 +246,7 @@ export function repairReviewTimelinePreservingEmpty(inputRows = []) {
   });
 }
 
-export function repairReviewStructurePreservingEmpty(inputRows = []) {
+export function repairReviewStructurePreservingEmpty(inputRows = [], options = {}) {
   const normalizedRows = normalizeReviewRows(inputRows);
   const repairedRows = [];
   let pendingRows = [];
@@ -220,7 +256,7 @@ export function repairReviewStructurePreservingEmpty(inputRows = []) {
 
   const flushPendingRows = () => {
     if (!pendingRows.length) return;
-    const repair = repairReviewStructure(pendingRows);
+    const repair = repairReviewStructure(pendingRows, options);
     repairedRows.push(...repair.rows);
     splitRowCount += repair.splitRowCount || 0;
     addedRowCount += repair.addedRowCount || 0;
@@ -239,7 +275,7 @@ export function repairReviewStructurePreservingEmpty(inputRows = []) {
   flushPendingRows();
 
   return {
-    rows: repairReviewTimelinePreservingEmpty(repairedRows),
+    rows: fitRowsWithinMaxEnd(repairReviewTimelinePreservingEmpty(repairedRows), options.maxEnd),
     splitRowCount,
     addedRowCount,
     mergedRowCount,

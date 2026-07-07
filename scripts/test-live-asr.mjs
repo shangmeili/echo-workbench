@@ -303,7 +303,7 @@ try {
   assertExpectedText(transcript, args.expect);
   const duration = Number(args.duration) || 0;
   const rows = rowsFromAsrResult(data, duration);
-  const repair = repairReviewStructurePreservingEmpty(rows);
+  const repair = repairReviewStructurePreservingEmpty(rows, { maxEnd: duration });
   const workbenchRows = repair.rows;
   const minRows = positiveNumber(args["min-rows"], 1);
   const minChars = positiveNumber(args["min-chars"], 1);

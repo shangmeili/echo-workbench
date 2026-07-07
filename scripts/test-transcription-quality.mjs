@@ -233,6 +233,17 @@ assert.deepEqual(
   ["这是一条非常非常长", "并且时间极短的字幕内容", "后一条和上一条时间重叠", "第三条也过短"],
 );
 
+const boundedMediaRepair = repairReviewStructure([
+  { id: "a", start: 0, end: 0.3, speaker: "未标注", text: "第一条很长需要自动处理", translation: "" },
+  { id: "b", start: 0.25, end: 1.1, speaker: "未标注", text: "第二条也很长需要自动处理", translation: "" },
+  { id: "c", start: 1.05, end: 1.3, speaker: "未标注", text: "第三条过短", translation: "" },
+], { maxEnd: 2.2 }).rows;
+assertCleanTimeline(boundedMediaRepair, "bounded media repair");
+assert.ok(
+  boundedMediaRepair.at(-1).end <= 2.2,
+  `bounded media repair should not create subtitle timecodes beyond media duration: ${boundedMediaRepair.at(-1).end}`,
+);
+
 const importedBoundaryDuplicateRows = normalizeLikeWorkbench(parseSubtitle([
   "1",
   "00:00:00,000 --> 00:00:02,400",
