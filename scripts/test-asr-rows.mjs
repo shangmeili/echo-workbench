@@ -180,6 +180,49 @@ assert.ok(
   "Chinese subtitle rows should not end on dangling helper words or split protected words",
 );
 
+assert.deepEqual(
+  splitTranscriptIntoSentences("我想先确认一下今天这个视频里面提到的几个关键问题第一个是转写结果为什么会出现时间重叠第二个是字幕为什么会被切得很奇怪第三个是用户不应该自己去修这些结构问题"),
+  [
+    "我想先确认一下今天",
+    "这个视频里面提到的几个关键问题",
+    "第一个是转写结果",
+    "为什么会出现时间重叠",
+    "第二个是字幕",
+    "为什么会被切得很奇怪",
+    "第三个是用户不应该自己去修",
+    "这些结构问题",
+  ],
+);
+
+assert.deepEqual(
+  splitTranscriptIntoSentences("我们现在看到的情况是点击开始转写以后按钮会变成转写中但是过一段时间又恢复成开始转写页面没有告诉我到底失败在哪里这对普通用户来说是不可接受的"),
+  [
+    "我们现在看到的情况是点击开始转写以后",
+    "按钮会变成转写中",
+    "但是过一段时间又恢复成开始转写页面",
+    "没有告诉我到底失败在哪里这对",
+    "普通用户来说是不可接受的",
+  ],
+);
+
+assert.deepEqual(
+  splitTranscriptIntoSentences("昨天我们看了一个会议录屏里面有产品经理开发和运营三个人讨论上线计划大家说话比较快中间还有一些专有名词比如回响工作台和模型配置"),
+  [
+    "昨天我们看了一个会议录屏里面有",
+    "产品经理开发和运营三个人讨论上线计划",
+    "大家说话比较快中间还有一些专有名词",
+    "比如回响工作台和模型配置",
+  ],
+);
+
+for (const rows of [
+  splitTranscriptIntoSentences("我们现在看到的情况是点击开始转写以后按钮会变成转写中但是过一段时间又恢复成开始转写页面没有告诉我到底失败在哪里这对普通用户来说是不可接受的"),
+  splitTranscriptIntoSentences("昨天我们看了一个会议录屏里面有产品经理开发和运营三个人讨论上线计划大家说话比较快中间还有一些专有名词比如回响工作台和模型配置"),
+]) {
+  const joined = rows.join("|");
+  assert.doesNotMatch(joined, /普通\|用户|用户\|来说|产品\|经理|上线\|计划|专有\|名词/, "Chinese hard split should not break common product and subtitle-review phrases");
+}
+
 assert.ok(
   splitTranscriptIntoSentences("this is a long english transcription result without punctuation and it should be split into readable subtitle rows for proofreading")
     .every((row) => !/\b(?:and|or|but|that|which|who|to|of|for|in|on|at|with|from|into|as|by|can|could|should|would|will|may|might|must|shall)$/i.test(row)),

@@ -33,6 +33,7 @@ const phraseBreakBeforePatterns = [
   "上一条", "下一条", "前一条", "后一条",
   "我知道", "我觉得", "我以为", "我想", "我要", "我不", "我希望", "我们先", "我们现在",
   "你知道", "你觉得", "你想", "你要", "你不", "你先", "他是", "她是", "是不是",
+  "第一个", "第二个", "第三个", "第四个", "第一点", "第二点", "第三点", "第四点",
 ];
 
 const phraseStrongBreakBeforePatterns = new Set([
@@ -43,6 +44,7 @@ const phraseStrongBreakBeforePatterns = new Set([
   "好的", "而是", "而不是", "也要", "系统", "这部分", "源语言", "目标语言", "翻译", "校对窗口", "按钮",
   "是的", "不是", "你会", "我会", "我知道", "我觉得", "我以为", "我想", "我要", "我不", "我希望",
   "你知道", "你觉得", "你想", "你要", "你不", "是不是",
+  "第一个", "第二个", "第三个", "第四个", "第一点", "第二点", "第三点", "第四点",
 ]);
 
 const implicitBreakBeforePatterns = [
@@ -52,6 +54,7 @@ const implicitBreakBeforePatterns = [
   "好的", "也要", "不要", "系统",
   "你会", "我会", "我知道", "我觉得", "我以为", "我想", "我要", "我不", "我希望",
   "你知道", "你觉得", "你想", "你要", "你不",
+  "第一个", "第二个", "第三个", "第四个", "第一点", "第二点", "第三点", "第四点", "也不应该",
 ];
 
 const phraseBreakAfterPatterns = [
@@ -62,8 +65,12 @@ const phraseBreakAfterPatterns = [
 const protectedCjkSplitPairs = new Set([
   "不是", "应该", "可以", "可能", "需要", "目标", "语言", "中文", "英文", "翻译", "字幕", "转写", "校对",
   "尽量", "按钮", "用户", "系统", "模型", "配置", "视频", "音频", "时间", "重叠", "导出", "处理", "修复",
-  "这种", "错误", "交给", "时候",
+  "这种", "错误", "交给", "时候", "页面", "普通", "产品", "经理", "计划", "专有", "名词", "字幕",
 ]);
+
+const protectedCjkSplitPhrases = [
+  "普通用户来说", "普通用户", "产品经理", "上线计划", "专有名词", "开始转写页面",
+];
 
 function startsWithPattern(text, patterns) {
   return Array.from(patterns).find((pattern) => String(text || "").startsWith(pattern)) || "";
@@ -88,6 +95,7 @@ function isProtectedCjkPatternBoundary(value, index, pattern) {
 function shouldSkipCjkBreakBefore(value, index, pattern) {
   const text = String(value || "");
   if (pattern === "系统" && !text.slice(index).startsWith("系统应该")) return true;
+  if (pattern === "翻译" && text[index - 1] === "把") return true;
   return false;
 }
 
@@ -102,6 +110,34 @@ function adjustedCjkBreakBeforeIndex(value, index, pattern) {
 function adjustCjkHardSplitIndex(value, index, maxUnits, minimumUnits) {
   const text = String(value || "");
   if (index <= 0 || index >= text.length) return index;
+  for (const phrase of protectedCjkSplitPhrases) {
+    let phraseStart = text.indexOf(phrase);
+    while (phraseStart >= 0) {
+      const phraseEnd = phraseStart + phrase.length;
+      if (index > phraseStart && index < phraseEnd) {
+        const rightBefore = text.slice(0, phraseEnd).trim();
+        const rightAfter = text.slice(phraseEnd).trim();
+        if (
+          transcriptWeight(rightBefore) <= maxUnits + 2
+          && transcriptWeight(rightAfter) >= 4
+        ) {
+          return phraseEnd;
+        }
+
+        const leftBefore = text.slice(0, phraseStart).trim();
+        const leftAfter = text.slice(phraseStart).trim();
+        if (
+          transcriptWeight(leftBefore) >= minimumUnits
+          && transcriptWeight(leftAfter) >= 4
+        ) {
+          return phraseStart;
+        }
+
+        return index;
+      }
+      phraseStart = text.indexOf(phrase, phraseStart + phrase.length);
+    }
+  }
   const pair = `${text[index - 1] || ""}${text[index] || ""}`;
   if (!protectedCjkSplitPairs.has(pair)) return index;
 
