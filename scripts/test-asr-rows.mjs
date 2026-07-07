@@ -32,6 +32,26 @@ assert.deepEqual(
 );
 
 assert.deepEqual(
+  splitTranscriptIntoSentences("好的我们继续看下一段这部分讲的是模型配置和转写服务"),
+  ["好的我们继续看下一段", "这部分讲的是模型配置和转写服务"],
+);
+
+assert.deepEqual(
+  splitTranscriptIntoSentences("对这个问题不应该提示用户自己解决而是系统自动修复"),
+  ["对这个问题不应该提示用户自己解决", "而是系统自动修复"],
+);
+
+assert.deepEqual(
+  splitTranscriptIntoSentences("是这样如果源语言是英文目标语言是中文翻译才是附加功能"),
+  ["是这样如果源语言是英文", "目标语言是中文", "翻译才是附加功能"],
+);
+
+assert.deepEqual(
+  splitTranscriptIntoSentences("我觉得这个页面现在最大的问题是校对窗口太挤按钮也太多"),
+  ["我觉得这个页面现在最大的问题是", "校对窗口太挤按钮也太多"],
+);
+
+assert.deepEqual(
   splitTranscriptIntoSentences("哇我听够了我以为我们只能给 Kade 最糟糕的最糟糕的就像这个人 Kade 可以有他这些都是我的你在做什么在跟想吗这叫自我控制 Damon"),
   [
     "哇我听够了",

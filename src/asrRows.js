@@ -26,6 +26,7 @@ const phraseBreakBeforePatterns = [
   "然后", "所以", "但是", "不过", "可是", "因为", "如果", "否则", "虽然", "只是",
   "同时", "并且", "以及", "为了", "接着", "另外", "最后",
   "需要", "应该", "可以", "可能", "其实", "就是", "就像", "那么", "总之", "换句话说",
+  "好的", "而是", "而不是", "也要", "系统", "这部分", "源语言", "目标语言", "翻译", "校对窗口", "按钮",
   "是的", "不是",
   "你会", "我会", "我们", "他们", "她们", "它们", "这个", "那个", "这些", "那些", "这里", "那里",
   "上一条", "下一条", "前一条", "后一条",
@@ -37,14 +38,20 @@ const phraseStrongBreakBeforePatterns = new Set([
   "然后", "所以", "但是", "不过", "可是", "因为", "如果", "否则", "虽然", "只是",
   "同时", "并且", "以及", "为了", "接着", "另外", "最后",
   "需要", "应该", "可以", "可能", "其实", "就是", "就像", "那么", "总之", "换句话说",
+  "好的", "而是", "而不是", "也要", "系统", "这部分", "源语言", "目标语言", "翻译", "校对窗口", "按钮",
   "是的", "不是", "你会", "我会", "我知道", "我觉得", "我以为", "我想", "我要", "我不", "我希望",
   "你知道", "你觉得", "你想", "你要", "你不", "是不是",
 ]);
 
 const phraseBreakAfterPatterns = [
-  "等一下", "等一等", "没关系", "是的", "不是", "好了", "够了", "死了", "完了", "对吧", "好吗", "知道了",
+  "等一下", "等一等", "没关系", "好的", "是的", "不是", "好了", "够了", "死了", "完了", "对吧", "好吗", "知道了",
   "吗", "呢", "吧", "什么",
 ];
+
+const protectedCjkSplitPairs = new Set([
+  "不是", "应该", "可以", "可能", "需要", "目标", "语言", "中文", "英文", "翻译", "字幕", "转写", "校对",
+  "尽量", "按钮", "用户", "系统", "模型", "配置", "视频", "音频", "时间", "重叠", "导出", "处理", "修复",
+]);
 
 function startsWithPattern(text, patterns) {
   return patterns.find((pattern) => String(text || "").startsWith(pattern)) || "";
@@ -52,6 +59,44 @@ function startsWithPattern(text, patterns) {
 
 function endsWithPattern(text, patterns) {
   return patterns.find((pattern) => String(text || "").endsWith(pattern)) || "";
+}
+
+function isProtectedCjkPatternBoundary(value, index, pattern) {
+  const text = String(value || "");
+  if (pattern === "不是" && text.slice(index - 1, index + pattern.length) === "是不是") return true;
+  if (pattern === "不是" && text[index - 1] === "而") return true;
+  if (pattern === "应该" && text[index - 1] === "不") return true;
+  if (pattern === "可以" && text[index - 1] === "不") return true;
+  return false;
+}
+
+function adjustCjkHardSplitIndex(value, index, maxUnits, minimumUnits) {
+  const text = String(value || "");
+  if (index <= 0 || index >= text.length) return index;
+  const pair = `${text[index - 1] || ""}${text[index] || ""}`;
+  if (!protectedCjkSplitPairs.has(pair)) return index;
+
+  const rightIndex = index + 1;
+  const rightBefore = text.slice(0, rightIndex).trim();
+  const rightAfter = text.slice(rightIndex).trim();
+  if (
+    transcriptWeight(rightBefore) <= maxUnits + 2
+    && transcriptWeight(rightAfter) >= 4
+  ) {
+    return rightIndex;
+  }
+
+  const leftIndex = index - 1;
+  const leftBefore = text.slice(0, leftIndex).trim();
+  const leftAfter = text.slice(leftIndex).trim();
+  if (
+    transcriptWeight(leftBefore) >= minimumUnits
+    && transcriptWeight(leftAfter) >= 4
+  ) {
+    return leftIndex;
+  }
+
+  return index;
 }
 
 function splitPhraseSpacedTranscript(text) {
@@ -305,12 +350,31 @@ function splitCjkImplicitSentenceBoundaries(text) {
       boundaryIndexes.push(splitIndex);
     }
   }
+  const contrastStartPattern = /(而不是|而是)/g;
+  while ((match = contrastStartPattern.exec(value)) !== null) {
+    const splitIndex = match.index;
+    if (match[1] === "而不是" && value.slice(splitIndex, splitIndex + 4) === "而不是我") continue;
+    const before = value.slice(0, splitIndex).trim();
+    const after = value.slice(splitIndex).trim();
+    if (transcriptWeight(before) >= 5 && transcriptWeight(after) >= 4) {
+      boundaryIndexes.push(splitIndex);
+    }
+  }
   const newQuestionPattern = /(这个|那个|这里|那里)(可以吗|对吗|好吗|是不是|行吗)/g;
   while ((match = newQuestionPattern.exec(value)) !== null) {
     const splitIndex = match.index;
     const before = value.slice(0, splitIndex).trim();
     const after = value.slice(splitIndex).trim();
     if (transcriptWeight(before) >= 5 && transcriptWeight(after) >= 3) {
+      boundaryIndexes.push(splitIndex);
+    }
+  }
+  const translationBoundaryPattern = /(中文|英文|普通话|粤语|日文|韩文|法文|德文|西班牙文)(?=(翻译才是|翻译仅|翻译只是|翻译作为))/g;
+  while ((match = translationBoundaryPattern.exec(value)) !== null) {
+    const splitIndex = match.index + match[1].length;
+    const before = value.slice(0, splitIndex).trim();
+    const after = value.slice(splitIndex).trim();
+    if (transcriptWeight(before) >= 5 && transcriptWeight(after) >= 4) {
       boundaryIndexes.push(splitIndex);
     }
   }
@@ -366,6 +430,10 @@ function chooseReadableCjkSplitIndex(value, maxUnits, minimumUnits) {
   for (const pattern of phraseBreakBeforePatterns) {
     let index = value.indexOf(pattern);
     while (index > 0) {
+      if (isProtectedCjkPatternBoundary(value, index, pattern)) {
+        index = value.indexOf(pattern, index + pattern.length);
+        continue;
+      }
       const isStrongBreak = phraseStrongBreakBeforePatterns.has(pattern);
       addCandidate(index, isStrongBreak ? 7 : 1.5, isStrongBreak ? Math.max(4, minimumUnits - 2) : minimumUnits);
       index = value.indexOf(pattern, index + pattern.length);
@@ -411,7 +479,7 @@ function chooseHardSplitIndex(value, maxUnits, minimumUnits) {
     splitIndex -= 1;
   }
   if (transcriptWeight(value.slice(0, splitIndex).trim()) < minimumUnits) return originalSplit;
-  return splitIndex;
+  return adjustCjkHardSplitIndex(value, splitIndex, maxUnits, minimumUnits);
 }
 
 export function transcriptWeight(text) {

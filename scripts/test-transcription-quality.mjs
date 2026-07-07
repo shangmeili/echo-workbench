@@ -99,6 +99,32 @@ const longChineseRows = normalizeLikeWorkbench(rowsFromAsrResult({
 assert.ok(longChineseRows.length >= 4, "long Chinese ASR rows should be split into multiple proofreading rows");
 assertWorkbenchQuality(longChineseRows, "long Chinese ASR row repair");
 
+const realisticProductSpeechRows = normalizeLikeWorkbench(rowsFromAsrResult({
+  segments: [{
+    start: 0,
+    end: 38,
+    text: "这里是一个真实转写场景我们先看一下这个视频的主要内容然后确认每一段字幕是不是方便阅读如果出现时间重叠或者单条过长系统应该自动处理而不是要求用户自己判断怎么修复好的我们继续看下一段这部分讲的是模型配置和转写服务如果服务返回的文本没有标点也要尽量拆成适合校对的片段",
+  }],
+}, 38));
+assertWorkbenchQuality(realisticProductSpeechRows, "realistic product speech ASR row repair");
+assertNoTimingPressure(realisticProductSpeechRows, "realistic product speech ASR row repair");
+assert.deepEqual(
+  realisticProductSpeechRows.map((row) => row.text),
+  [
+    "这里是一个真实转写场景",
+    "我们先看一下这个视频的主要内容",
+    "然后确认每一段字幕",
+    "是不是方便阅读",
+    "如果出现时间重叠或者单条过长",
+    "系统应该自动处理",
+    "而不是要求用户自己判断怎么修复",
+    "好的我们继续看下一段",
+    "这部分讲的是模型配置和转写服务",
+    "如果服务返回的文本没有标点",
+    "也要尽量拆成适合校对的片段",
+  ],
+);
+
 const compressedChineseRows = normalizeLikeWorkbench(rowsFromAsrResult({
   segments: [{
     start: 0,

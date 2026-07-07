@@ -2796,7 +2796,7 @@ ${rawText}`;
       const qualityIssue = detectTranscriptionQualityIssue(reviewRows, sourceLanguage, asrSource.duration);
       const readabilityText = readableRepair.splitRowCount ? `已自动拆分 ${readableRepair.splitRowCount} 条过长段落。` : "";
       const shortFragmentText = readableRepair.mergedRowCount ? `已自动合并 ${readableRepair.mergedRowCount} 条短碎片。` : "";
-      const qualityText = qualityIssue ? ` ${qualityIssue}` : " 请继续校对时间轴、专有名词和低置信片段。";
+      const qualityText = qualityIssue ? ` ${qualityIssue}` : " 可继续校对文本、专有名词和低置信片段。";
       const successMessage = hasTiming ? `${conversionText}${chunkText}${dedupeText}${readabilityText}${shortFragmentText}云端转写完成，已生成 ${reviewRows.length} 条可编辑段落。${correctionText}${qualityText}` : `${conversionText}${chunkText}${dedupeText}${readabilityText}${shortFragmentText}云端转写完成，已生成 ${reviewRows.length} 条可编辑段落；当前模型未返回词级时间戳，时间轴已按文本自动分段，请校对。${correctionText}${qualityText}`;
       setMessage(successMessage);
       setWorkbenchTranscriptionStatus({ state: "success", message: successMessage, stage: "生成校对结果" });
