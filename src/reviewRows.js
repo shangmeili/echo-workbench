@@ -162,7 +162,7 @@ export function repairReviewStructurePreservingEmpty(inputRows = []) {
   flushPendingRows();
 
   return {
-    rows: normalizeReviewRows(repairedRows),
+    rows: repairReviewTimelinePreservingEmpty(repairedRows),
     splitRowCount,
     addedRowCount,
     mergedRowCount,

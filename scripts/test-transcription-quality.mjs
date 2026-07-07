@@ -165,6 +165,14 @@ assert.ok(
   `non-empty rows after an empty row should be readable: ${preservedEmptyRepair.map((row) => row.text).join(" | ")}`,
 );
 
+const emptyBoundaryRepair = repairReviewStructurePreservingEmpty([
+  { id: "before-empty", start: 0, end: 2, speaker: "未标注", text: "第一条内容。", translation: "" },
+  { id: "empty-boundary", start: 1.5, end: 1.5, speaker: "未标注", text: "", translation: "" },
+  { id: "after-empty", start: 1.4, end: 3, speaker: "未标注", text: "第二条内容。", translation: "" },
+]).rows;
+assert.equal(emptyBoundaryRepair.find((row) => row.id === "empty-boundary")?.text, "");
+assertCleanTimeline(emptyBoundaryRepair, "empty boundary timeline repair");
+
 assert.deepEqual(
   splitTranscriptIntoSentences("The U.S. Army reviewed the audio. next sentence starts lowercase."),
   ["The U.S. Army reviewed the audio.", "next sentence starts lowercase."],
