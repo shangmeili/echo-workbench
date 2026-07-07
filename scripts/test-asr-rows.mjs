@@ -27,6 +27,11 @@ assert.deepEqual(
 );
 
 assert.deepEqual(
+  splitTranscriptIntoSentences("我知道 你不相信我 但是 我们现在必须离开这里 否则 就来不及了"),
+  ["我知道你不相信我", "但是我们现在必须离开这里", "否则就来不及了"],
+);
+
+assert.deepEqual(
   splitTranscriptIntoSentences("等一下我还没有准备好你先不要开始我们马上处理"),
   ["等一下我还没有准备好", "你先不要开始我们马上处理"],
 );
@@ -231,6 +236,21 @@ assert.ok(
   mixedLanguageRows.every((row) => transcriptWeight(row.text) <= 18),
   `mixed ASR rows should stay readable, got ${mixedLanguageRows.map((row) => row.text).join(" | ")}`,
 );
+
+const phraseSpacedRows = rowsFromAsrResult({
+  segments: [{
+    start: 0,
+    end: 18,
+    text: "之前在 《 鬼魂笔记 》 中 是的 我会想她死而不是我 如果 Meg 和 Elizabeth 都死了 你会想要活着吗 我希望活着",
+  }],
+}, 18);
+assert.ok(phraseSpacedRows.length >= 4, `phrase-spaced ASR text should be split for proofreading, got ${phraseSpacedRows.map((row) => row.text).join(" | ")}`);
+assert.ok(
+  phraseSpacedRows.every((row) => transcriptWeight(row.text) <= 18),
+  `phrase-spaced ASR rows should stay readable, got ${phraseSpacedRows.map((row) => row.text).join(" | ")}`,
+);
+assert.match(phraseSpacedRows.map((row) => row.text).join("|"), /之前在《鬼魂笔记》中/);
+assert.match(phraseSpacedRows.map((row) => row.text).join("|"), /如果 Meg 和 Elizabeth 都死了/);
 
 const overlappingRows = rowsFromAsrResult({
   segments: [

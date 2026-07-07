@@ -2049,6 +2049,19 @@ try {
       });
       return;
     }
+    if (asrMode === "languageParamFail") {
+      await route.fulfill({
+        status: 400,
+        contentType: "application/json",
+        body: JSON.stringify({
+          error: "当前转写配置未通过语言或音频参数校验。系统已阻止启用该配置，并避免写入不完整结果。",
+          stage: "调用转写服务",
+          code: "ASR_LANGUAGE_PARAMETER_FAILED",
+          retryable: false,
+        }),
+      });
+      return;
+    }
     if (asrMode === "textFail") {
       await route.fulfill({
         status: 400,
@@ -2210,6 +2223,19 @@ try {
   assert.deepEqual(failedStatusLayout, { visible: true, beforeStart: true }, `ASR failure should be visible before the retry button, got ${JSON.stringify(failedStatusLayout)}`);
   assert.equal(await page.locator(".subtitle-table").count(), 0, "failed transcription should not create proofreading rows");
   assert.equal(await page.getByRole("button", { name: /开始转写/ }).first().isEnabled(), true, "failed transcription should return to a retryable state with the error still visible");
+  asrMode = "languageParamFail";
+  expectedAsrFailureEvents = 4;
+  await assert.doesNotReject(() => page.getByRole("button", { name: /开始转写/ }).first().click());
+  await page.waitForFunction(() => document.querySelector(".transcription-status-card.error")?.textContent?.includes("未通过素材语言或音频参数校验"));
+  const failedAsrProviderState = await page.evaluate(() => {
+    const stored = JSON.parse(localStorage.getItem("echo.asrProvider.v1") || "{}");
+    return {
+      testFailed: stored.lastTest?.ok === false,
+      inlineText: [...document.querySelectorAll(".inline-status")].map((item) => item.textContent || "").join(" | "),
+    };
+  });
+  assert.equal(failedAsrProviderState.testFailed, true, "runtime language/audio parameter failure should mark the ASR service as failed");
+  assert.match(failedAsrProviderState.inlineText, /转写服务测试失败|转写服务失败/, "runtime ASR failure should be reflected in the service status");
   asrMode = "textFail";
   expectedAsrFailureEvents = 2;
   await assert.doesNotReject(() => page.getByRole("button", { name: /开始转写/ }).first().click());
@@ -2289,7 +2315,7 @@ try {
   asrMode = "normal";
   await assert.doesNotReject(() => page.getByRole("button", { name: /开始转写/ }).first().click());
   await page.waitForTimeout(1200);
-  assert.equal(asrRequestCount, 8);
+  assert.equal(asrRequestCount, 10);
   assert.equal(await page.locator(".subtitle-table .table-row").count() - 1, 2);
   assert.match(await readCorrectionTableValues(page), /音频转写第一句/);
   assert.deepEqual(await readCorrectionTableMode(page), { sourceOnly: true, withTranslation: false, translationEditors: 0 });
@@ -2325,7 +2351,7 @@ try {
   const startButton = page.getByRole("button", { name: /开始转写/ }).first();
   await assert.doesNotReject(() => startButton.click());
   await page.waitForTimeout(1200);
-  assert.equal(asrRequestCount, 9);
+  assert.equal(asrRequestCount, 11);
   assert.equal(await page.locator(".subtitle-table .table-row").count() - 1, 2);
   assert.match(await readCorrectionTableValues(page), /音频转写第一句/);
   assert.deepEqual(await readCorrectionTableMode(page), { sourceOnly: true, withTranslation: false, translationEditors: 0 });

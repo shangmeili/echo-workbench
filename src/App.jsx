@@ -1475,7 +1475,7 @@ function HomeView({ selectedFeature, setSelectedFeature, onOpenWorkbench, recent
   );
 }
 
-function WorkbenchView({ activeTool, onBackHome, rows, setRows, media, setMedia, workspaceState, setWorkspaceState, provider, asrProvider, serverStatus, terms, addRecent, updateActiveRecent, onOpenModels, workspaceStatus, workspaceSaveStatus, onOpenSettings, workspaceNotice, activeProjectId, activeProjectName, onBusyChange }) {
+function WorkbenchView({ activeTool, onBackHome, rows, setRows, media, setMedia, workspaceState, setWorkspaceState, provider, asrProvider, setAsrProvider, serverStatus, terms, addRecent, updateActiveRecent, onOpenModels, workspaceStatus, workspaceSaveStatus, onOpenSettings, workspaceNotice, activeProjectId, activeProjectName, onBusyChange }) {
   const [busy, setBusy] = useState("");
   const [message, setMessage] = useState("");
   const [transcriptionStatus, setTranscriptionStatus] = useState({ state: "idle", message: "" });
@@ -1514,6 +1514,21 @@ function WorkbenchView({ activeTool, onBackHome, rows, setRows, media, setMedia,
     if (options.persist) {
       setWorkspaceState((current) => ({ ...current, lastTranscriptionStatus: null }));
     }
+  };
+  const markAsrProviderRuntimeFailure = (message) => {
+    if (typeof setAsrProvider !== "function") return;
+    setAsrProvider((current) => {
+      const next = {
+        ...current,
+        lastTest: {
+          ok: false,
+          message,
+          at: Date.now(),
+        },
+      };
+      saveStored(STORAGE_KEYS.asrProvider, next);
+      return next;
+    });
   };
   const mediaInputRef = useRef(null);
   const audioTrackInputRef = useRef(null);
@@ -2787,6 +2802,9 @@ ${rawText}`;
       setWorkspaceState((current) => ({ ...current, lastTranscriptionStatus: null }));
     } catch (error) {
       const errorMessage = formatAsrFailureMessage(error);
+      if (isAsrLanguageParameterError(error)) {
+        markAsrProviderRuntimeFailure("转写任务失败：当前服务未通过素材语言或音频参数校验，系统已暂停将其视为可用转写服务。");
+      }
       setMessage(errorMessage);
       setWorkbenchTranscriptionStatus({
         state: error?.name === "AbortError" ? "cancelled" : "error",
@@ -6364,6 +6382,7 @@ export function App() {
           setWorkspaceState={setWorkspaceState}
           provider={provider}
           asrProvider={asrProvider}
+          setAsrProvider={setAsrProvider}
           serverStatus={serverStatus}
           terms={terms}
           addRecent={addRecent}

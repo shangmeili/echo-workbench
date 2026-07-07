@@ -1,4 +1,7 @@
 export function splitTranscriptIntoSentences(text) {
+  const phraseRows = splitPhraseSpacedTranscript(text);
+  if (phraseRows.length > 1) return phraseRows;
+
   const clean = normalizeAsrText(text)
     .replace(/\r/g, "")
     .replace(/[ \t]+/g, " ")
@@ -22,6 +25,89 @@ export function splitTranscriptIntoSentences(text) {
   }
   const maxChars = maxMergedUnits(clean);
   return splitCjkTextByReadableLength(clean, maxChars);
+}
+
+const phraseBreakBeforePatterns = [
+  "然后", "所以", "但是", "不过", "可是", "因为", "如果", "否则", "虽然", "只是",
+  "同时", "并且", "以及", "为了", "接着", "另外", "最后",
+  "需要", "应该", "可以", "可能", "其实", "就是", "就像", "那么", "总之", "换句话说",
+  "是的", "不是",
+  "你会", "我会", "我们", "他们", "她们", "它们", "这个", "那个", "这里", "那里",
+  "我知道", "我觉得", "我以为", "我想", "我要", "我不", "我希望", "我们先", "我们现在",
+  "你知道", "你觉得", "你想", "你要", "你不", "你先", "他是", "她是", "是不是",
+];
+
+const phraseStrongBreakBeforePatterns = new Set([
+  "然后", "所以", "但是", "不过", "可是", "因为", "如果", "否则", "虽然", "只是",
+  "同时", "并且", "以及", "为了", "接着", "另外", "最后",
+  "需要", "应该", "可以", "可能", "其实", "就是", "就像", "那么", "总之", "换句话说",
+  "是的", "不是", "你会", "我会", "我知道", "我觉得", "我以为", "我想", "我要", "我不", "我希望",
+  "你知道", "你觉得", "你想", "你要", "你不", "是不是",
+]);
+
+const phraseBreakAfterPatterns = [
+  "等一下", "等一等", "没关系", "是的", "不是", "好了", "对吧", "好吗", "知道了",
+];
+
+function startsWithPattern(text, patterns) {
+  return patterns.find((pattern) => String(text || "").startsWith(pattern)) || "";
+}
+
+function endsWithPattern(text, patterns) {
+  return patterns.find((pattern) => String(text || "").endsWith(pattern)) || "";
+}
+
+function splitPhraseSpacedTranscript(text) {
+  const raw = String(text || "").replace(/\r/g, "").trim();
+  if (!raw || !/[\u4e00-\u9fa5]/.test(raw) || !/[\u4e00-\u9fa5][ \t]+[\u4e00-\u9fa5A-Za-z0-9《“"']/.test(raw)) return [];
+  if (/[。！？!?；;，,、：:]/.test(raw)) return [];
+  const rows = raw
+    .split(/\n+/)
+    .flatMap((line) => splitPhraseSpacedLine(line))
+    .flatMap((line) => splitLongSentenceChunk(line))
+    .map((line) => normalizeAsrText(line))
+    .filter(Boolean);
+  return rows.length > 1 ? rows : [];
+}
+
+function splitPhraseSpacedLine(line) {
+  const chunks = String(line || "")
+    .trim()
+    .split(/[ \t]+/)
+    .map((item) => normalizeAsrText(item))
+    .filter(Boolean);
+  if (chunks.length < 3) return [];
+
+  const rows = [];
+  let current = "";
+  const flush = () => {
+    const clean = normalizeAsrText(current);
+    if (clean) rows.push(clean);
+    current = "";
+  };
+
+  for (const chunk of chunks) {
+    const breakBefore = startsWithPattern(chunk, phraseBreakBeforePatterns);
+    const shouldBreakBefore = current
+      && breakBefore
+      && transcriptWeight(current) >= (phraseStrongBreakBeforePatterns.has(breakBefore) ? 4 : 7);
+    if (shouldBreakBefore) flush();
+
+    const candidate = current ? joinAdjacentAsrText(current, chunk) : chunk;
+    if (current && transcriptWeight(candidate) > maxMergedUnits(candidate)) {
+      flush();
+      current = chunk;
+    } else {
+      current = candidate;
+    }
+
+    if (current && endsWithPattern(current, phraseBreakAfterPatterns) && transcriptWeight(current) >= 4) {
+      flush();
+    }
+  }
+
+  flush();
+  return rows;
 }
 
 const abbreviationBoundaryPattern = /(?:\b(?:Mr|Mrs|Ms|Dr|Prof|Sr|Jr|St|vs|etc|e\.g|i\.e)\.|(?:\b[A-Z]\.){2,})$/i;
@@ -106,24 +192,6 @@ function splitCjkTextByReadableLength(value, maxUnits) {
 }
 
 function chooseReadableCjkSplitIndex(value, maxUnits, minimumUnits) {
-  const softBreakBeforePatterns = [
-    "然后", "所以", "但是", "不过", "可是", "因为", "如果", "否则", "虽然", "只是",
-    "同时", "并且", "以及", "为了", "接着", "另外", "最后",
-    "需要", "应该", "可以", "可能", "其实", "就是", "就像", "那么", "总之", "换句话说",
-    "你会", "我会", "我们", "他们", "她们", "它们", "这个", "那个", "这里", "那里",
-    "我知道", "我觉得", "我以为", "我想", "我要", "我不", "我们先", "我们现在",
-    "你知道", "你觉得", "你想", "你要", "你不", "你先", "他是", "她是", "是不是",
-  ];
-  const strongBreakPatterns = new Set([
-    "然后", "所以", "但是", "不过", "可是", "因为", "如果", "否则", "虽然", "只是",
-    "同时", "并且", "以及", "为了", "接着", "另外", "最后",
-    "需要", "应该", "可以", "可能", "其实", "就是", "就像", "那么", "总之", "换句话说",
-    "你会", "我会", "我知道", "我觉得", "我以为", "我想", "我要", "我不",
-    "你知道", "你觉得", "你想", "你要", "你不", "是不是",
-  ]);
-  const softBreakAfterPatterns = [
-    "等一下", "等一等", "没关系", "是的", "不是", "好了", "对吧", "好吗", "知道了",
-  ];
   const candidates = [];
   const addCandidate = (index, weight = 1, minUnits = minimumUnits) => {
     if (index <= 0 || index >= value.length) return;
@@ -135,16 +203,16 @@ function chooseReadableCjkSplitIndex(value, maxUnits, minimumUnits) {
     candidates.push({ index, score: Math.abs(beforeUnits - target) - weight });
   };
 
-  for (const pattern of softBreakBeforePatterns) {
+  for (const pattern of phraseBreakBeforePatterns) {
     let index = value.indexOf(pattern);
     while (index > 0) {
-      const isStrongBreak = strongBreakPatterns.has(pattern);
+      const isStrongBreak = phraseStrongBreakBeforePatterns.has(pattern);
       addCandidate(index, isStrongBreak ? 7 : 1.5, isStrongBreak ? Math.max(4, minimumUnits - 2) : minimumUnits);
       index = value.indexOf(pattern, index + pattern.length);
     }
   }
 
-  for (const pattern of softBreakAfterPatterns) {
+  for (const pattern of phraseBreakAfterPatterns) {
     let index = value.indexOf(pattern);
     while (index >= 0) {
       addCandidate(index + pattern.length, 5, Math.max(3, minimumUnits - 3));
@@ -201,6 +269,10 @@ export function normalizeAsrText(text) {
     .replace(/\r/g, "")
     .replace(/[ \t]+/g, " ")
     .replace(/([\u4e00-\u9fa5])[ \t]+([\u4e00-\u9fa5])/g, "$1$2")
+    .replace(/([\u4e00-\u9fa5])\s+([《“"（(])/g, "$1$2")
+    .replace(/([《“"（(])\s+/g, "$1")
+    .replace(/\s+([》”"）)])/g, "$1")
+    .replace(/([》”"）)])\s+([\u4e00-\u9fa5])/g, "$1$2")
     .replace(/([\u4e00-\u9fa5]),(?=[\u4e00-\u9fa5])/g, "$1，")
     .replace(/([\u4e00-\u9fa5]);(?=[\u4e00-\u9fa5])/g, "$1；")
     .replace(/([\u4e00-\u9fa5]):(?=[\u4e00-\u9fa5])/g, "$1：")
@@ -283,19 +355,24 @@ export function groupWordsToRows(words) {
   return rows;
 }
 
+function rawSegmentText(segment) {
+  return String(segment?.text ?? segment?.transcript ?? segment?.sentence ?? "").trim();
+}
+
 function segmentText(segment) {
-  return normalizeAsrText(segment?.text ?? segment?.transcript ?? segment?.sentence ?? "");
+  return normalizeAsrText(rawSegmentText(segment));
 }
 
 function rowsFromSegment(segment, segmentIndex) {
-  const text = segmentText(segment);
+  const rawText = rawSegmentText(segment);
+  const text = normalizeAsrText(rawText);
   if (!text) return [];
   const start = finiteNumber(segment?.start ?? segment?.start_time ?? segment?.startTime, segmentIndex * 3);
   const inferredEnd = start + Math.max(transcriptWeight(text) * 0.22, 2);
   const rawEnd = finiteNumber(segment?.end ?? segment?.end_time ?? segment?.endTime, inferredEnd);
   const end = Math.max(start + 0.5, rawEnd);
   const speaker = segment.speaker || segment.speaker_label || "未标注";
-  const sentences = splitTranscriptIntoSentences(text);
+  const sentences = splitTranscriptIntoSentences(rawText);
   if (sentences.length <= 1 && transcriptWeight(text) <= maxMergedUnits(text)) {
     return [{
       id: `asr-segment-${Date.now()}-${segmentIndex}`,
