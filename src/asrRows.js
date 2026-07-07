@@ -28,6 +28,7 @@ const phraseBreakBeforePatterns = [
   "需要", "应该", "可以", "可能", "其实", "就是", "就像", "那么", "总之", "换句话说",
   "是的", "不是",
   "你会", "我会", "我们", "他们", "她们", "它们", "这个", "那个", "这些", "那些", "这里", "那里",
+  "上一条", "下一条", "前一条", "后一条",
   "我知道", "我觉得", "我以为", "我想", "我要", "我不", "我希望", "我们先", "我们现在",
   "你知道", "你觉得", "你想", "你要", "你不", "你先", "他是", "她是", "是不是",
 ];
@@ -754,7 +755,7 @@ function joinAdjacentAsrText(left, right) {
   const current = normalizeAsrText(right || "");
   if (!previous) return current;
   if (!current) return previous;
-  if (/[\u4e00-\u9fa5]$/.test(previous) && /^[\u4e00-\u9fa5，。！？；：、]/.test(current)) return `${previous}${current}`;
+  if (/[\u4e00-\u9fa5，。！？；：、]$/.test(previous) && /^[\u4e00-\u9fa5，。！？；：、]/.test(current)) return `${previous}${current}`;
   if (/^[,.;:!?，。！？；：、]/.test(current)) return `${previous}${current}`;
   return `${previous} ${current}`.replace(/\s+([,.;:!?，。！？；：、])/g, "$1").trim();
 }

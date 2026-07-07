@@ -88,7 +88,8 @@ export function repairReadableReviewRows(inputRows = []) {
   let splitRowCount = 0;
   normalizedRows.forEach((row, index) => {
     const hints = getSubtitleQualityHints(row, normalizedRows[index + 1]);
-    if (!hints.includes("单条过长")) {
+    const needsReadableSplit = hints.includes("单条过长") || hints.includes("阅读过快");
+    if (!needsReadableSplit) {
       repairedRows.push(row);
       return;
     }
@@ -103,12 +104,88 @@ export function repairReadableReviewRows(inputRows = []) {
   };
 }
 
+function subtitleTextLengthForTiming(value) {
+  const text = String(value || "");
+  return /[A-Za-z]/.test(text) && /\s/.test(text) ? transcriptWeight(text) : subtitleReadableLength(text);
+}
+
+function readableDurationFloor(row) {
+  const textLength = subtitleTextLengthForTiming(row?.text || "");
+  if (!textLength) return 0.7;
+  return Math.min(8, Math.max(0.7, textLength / 14));
+}
+
+function joinReviewText(left, right) {
+  const previous = String(left || "").trim();
+  const current = String(right || "").trim();
+  if (!previous) return current;
+  if (!current) return previous;
+  if (/[\u4e00-\u9fff]$/.test(previous) && /^[\u4e00-\u9fff]/.test(current)) return `${previous}${current}`;
+  if (/^[,.;:!?，。！？；：、]/.test(current)) return `${previous}${current}`;
+  return `${previous} ${current}`.replace(/\s+([,.;:!?，。！？；：、])/g, "$1").trim();
+}
+
+function reviewSentenceClosed(text) {
+  return /[。！？!?；;.]$/.test(String(text || "").trim());
+}
+
+function hasTimingPressure(row, nextRow = null) {
+  const hints = getSubtitleQualityHints(row, nextRow);
+  return hints.includes("时长过短") || hints.includes("阅读过快");
+}
+
+function mergeTimingPressureAdjacentRows(inputRows = []) {
+  const rows = normalizeReviewRows(inputRows);
+  const result = [];
+  for (const row of rows) {
+    const previous = result.at(-1);
+    if (!previous) {
+      result.push(row);
+      continue;
+    }
+    const gap = Number(row.start) - Number(previous.end);
+    const shouldMerge = hasTimingPressure(previous, row)
+      && gap <= 0.35
+      && !reviewSentenceClosed(previous.text)
+      && String(previous.speaker || "未标注") === String(row.speaker || "未标注");
+    if (!shouldMerge) {
+      result.push(row);
+      continue;
+    }
+    result[result.length - 1] = {
+      ...previous,
+      end: Math.max(Number(previous.end) || 0, Number(row.end) || 0),
+      text: joinReviewText(previous.text, row.text),
+      originalText: joinReviewText(previous.originalText || previous.text, row.originalText || row.text),
+      translation: joinReviewText(previous.translation, row.translation),
+      reviewStatus: previous.reviewStatus === "confirmed" ? "pending" : previous.reviewStatus,
+    };
+  }
+  return normalizeReviewRows(result);
+}
+
+function repairTimingPressureRows(inputRows = []) {
+  const rows = normalizeReviewRows(inputRows);
+  let previousEnd = 0;
+  return rows.map((row) => {
+    const start = Math.max(Number(row.start) || 0, previousEnd);
+    const end = Number(row.end) || start;
+    const desiredEnd = start + readableDurationFloor(row);
+    const nextEnd = Math.max(start + 0.35, end, desiredEnd);
+    previousEnd = nextEnd;
+    return { ...row, start, end: nextEnd };
+  });
+}
+
 export function repairReviewStructure(inputRows = []) {
   const timedRows = repairAsrTimeline(dedupeAdjacentAsrRows(inputRows));
-  const mergedRows = mergeShortAdjacentAsrRows(timedRows, { maxGapSeconds: 0.85, maxCombinedDuration: 5.8 });
+  const pressureMergedRows = mergeTimingPressureAdjacentRows(timedRows);
+  const mergedRows = mergeShortAdjacentAsrRows(pressureMergedRows, { maxGapSeconds: 0.85, maxCombinedDuration: 5.8 });
   const readableRepair = repairReadableReviewRows(repairAsrTimeline(mergedRows));
-  const repairedRows = repairAsrTimeline(readableRepair.rows);
-  const mergedRowCount = Math.max(0, timedRows.length - mergedRows.length);
+  const timedReadableRows = repairTimingPressureRows(readableRepair.rows);
+  const finalMergedRows = mergeShortAdjacentAsrRows(timedReadableRows, { maxGapSeconds: 0.85, maxCombinedDuration: 5.8 });
+  const repairedRows = repairAsrTimeline(repairTimingPressureRows(finalMergedRows));
+  const mergedRowCount = Math.max(0, timedRows.length + readableRepair.addedRowCount - finalMergedRows.length);
   return {
     ...readableRepair,
     mergedRowCount,

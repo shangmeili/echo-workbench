@@ -119,6 +119,16 @@ const compressedEnglishRows = normalizeLikeWorkbench(rowsFromAsrResult({
 assertWorkbenchQuality(compressedEnglishRows, "compressed English ASR row repair");
 assertNoTimingPressure(compressedEnglishRows, "compressed English ASR row repair");
 
+const terminalShortSubtitleRows = normalizeLikeWorkbench([
+  { id: "first", start: 0, end: 2.4, speaker: "未标注", text: "第一条内容。", translation: "" },
+  { id: "tail", start: 2.5, end: 2.8, speaker: "未标注", text: "末尾短字幕", translation: "" },
+]);
+assertNoTimingPressure(terminalShortSubtitleRows, "terminal short subtitle repair");
+assert.ok(
+  terminalShortSubtitleRows.at(-1).end - terminalShortSubtitleRows.at(-1).start >= 0.7,
+  "terminal short subtitle should be extended instead of left for manual repair",
+);
+
 const longMixedRows = normalizeLikeWorkbench(rowsFromAsrResult({
   segments: [{
     start: 0,
@@ -176,6 +186,26 @@ const importedSubtitleRows = normalizeLikeWorkbench(parseSubtitle([
   "第二条内容很长需要系统自动处理不要把时间重叠和断句问题交给用户。",
 ].join("\n")));
 assertWorkbenchQuality(importedSubtitleRows, "subtitle import auto repair");
+
+const compressedOverlappingSubtitleRows = normalizeLikeWorkbench(parseSubtitle([
+  "1",
+  "00:00:00,000 --> 00:00:00,300",
+  "这是一条非常非常长并且时间极短的字幕内容",
+  "",
+  "2",
+  "00:00:00,250 --> 00:00:02,000",
+  "后一条和上一条时间重叠",
+  "",
+  "3",
+  "00:00:04,000 --> 00:00:04,300",
+  "第三条也过短",
+].join("\n")));
+assertNoTimingPressure(compressedOverlappingSubtitleRows, "compressed overlapping subtitle import repair");
+assertCleanTimeline(compressedOverlappingSubtitleRows, "compressed overlapping subtitle import repair");
+assert.deepEqual(
+  compressedOverlappingSubtitleRows.map((row) => row.text),
+  ["这是一条非常非常长", "并且时间极短的字幕内容", "后一条和上一条时间重叠", "第三条也过短"],
+);
 
 const importedBoundaryDuplicateRows = normalizeLikeWorkbench(parseSubtitle([
   "1",

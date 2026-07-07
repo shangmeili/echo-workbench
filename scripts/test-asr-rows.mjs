@@ -27,6 +27,11 @@ assert.deepEqual(
 );
 
 assert.deepEqual(
+  splitTranscriptIntoSentences("这是一条非常非常长并且时间极短的字幕内容后一条和上一条时间重叠"),
+  ["这是一条非常非常长", "并且时间极短的字幕内容", "后一条和上一条时间重叠"],
+);
+
+assert.deepEqual(
   splitTranscriptIntoSentences("哇我听够了我以为我们只能给 Kade 最糟糕的最糟糕的就像这个人 Kade 可以有他这些都是我的你在做什么在跟想吗这叫自我控制 Damon"),
   [
     "哇我听够了",
