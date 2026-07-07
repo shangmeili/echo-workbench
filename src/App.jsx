@@ -866,7 +866,7 @@ function formatAsrFailureMessage(error) {
   const raw = String(error?.message || "").trim();
   const stageText = error?.stage ? `${error.stage}失败：` : "";
   if (isAsrLanguageParameterError(error)) {
-    return `转写未完成：${stageText}当前转写服务拒绝了素材的语言或音频参数，系统已阻止写入空结果并保留当前任务。可直接重试；连续失败时应更换为已验证通过的转写服务。`;
+    return `转写未完成：${stageText}当前转写配置未通过素材语言或音频参数校验。系统已阻止写入空结果、保留当前任务，并将该配置保持为未通过状态。`;
   }
   if (isTransientAsrConnectionError(error)) {
     return `转写未完成：${stageText}转写服务连接中断，系统已保留当前任务。没有生成不完整结果，可以直接再次开始；连续失败时该服务会保持未通过状态。`;
@@ -877,7 +877,7 @@ function formatAsrFailureMessage(error) {
 function formatAsrConfigTestFailure(error) {
   const raw = String(error?.message || "").trim();
   if (isAsrLanguageParameterError(error)) {
-    return "转写服务测试失败：当前端点拒绝了测试样本的语言或音频参数。系统没有保存测试通过状态；该服务暂不能作为可用转写服务启用。";
+    return "转写服务测试失败：当前配置未通过语言或音频参数校验。系统没有保存测试通过状态，也不会启用该转写服务。";
   }
   if (isTransientAsrConnectionError(error)) {
     return "转写服务测试失败：当前端点连接中断或网络不可达。系统没有保存测试通过状态；该服务暂不能作为可用转写服务启用。";
@@ -4598,7 +4598,7 @@ function AsrConfigPanel({ asrProvider, setAsrProvider, serverStatus, refreshServ
 
   const loadBuiltInTestSample = async () => {
     const sampleFormat = usesRivaGrpc ? "wav" : "m4a";
-    const response = await fetch(`/api/asr/test-sample?format=${sampleFormat}`);
+    const response = await fetch(`/api/asr/test-sample?format=${sampleFormat}&language=${encodeURIComponent(draft.languageCode || "multi")}`);
     if (!response.ok) {
       const data = await response.json().catch(() => ({}));
       throw new Error(data.error || "生成测试样本失败。");

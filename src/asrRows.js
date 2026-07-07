@@ -41,7 +41,7 @@ function splitLongSentenceChunk(text) {
     current = "";
   };
   const hardSplit = (value) => {
-    if (/\s/.test(value) && /[A-Za-z]/.test(value)) {
+    if (isLatinText(value)) {
       const words = value.split(/\s+/).filter(Boolean);
       for (let index = 0; index < words.length; index += maxUnits) {
         result.push(words.slice(index, index + maxUnits).join(" "));
@@ -101,7 +101,10 @@ function splitCjkTextByReadableLength(value, maxUnits) {
 export function transcriptWeight(text) {
   const value = String(text || "").trim();
   if (!value) return 1;
-  if (/\s/.test(value) && /[A-Za-z]/.test(value)) return Math.max(value.split(/\s+/).length, 1);
+  const cjkCount = (value.match(/[\u4e00-\u9fa5]/g) || []).length;
+  const latinWords = (value.match(/[A-Za-z0-9]+(?:[-'][A-Za-z0-9]+)*/g) || []).length;
+  if (cjkCount && latinWords) return Math.max(cjkCount + latinWords, 1);
+  if (!cjkCount && /\s/.test(value) && /[A-Za-z]/.test(value)) return Math.max(value.split(/\s+/).filter(Boolean).length, 1);
   return Math.max(value.length, 1);
 }
 
@@ -253,7 +256,7 @@ function isSentenceClosed(text) {
 }
 
 function isLatinText(text) {
-  return /[A-Za-z]/.test(text) && /\s/.test(text);
+  return /[A-Za-z]/.test(text) && /\s/.test(text) && !/[\u4e00-\u9fa5]/.test(text);
 }
 
 function maxMergedUnits(text) {

@@ -211,6 +211,91 @@ try {
     },
   );
 
+  globalThis.fetch = async (url) => {
+    requests.push({ url, mode: "http-ok-error" });
+    return new Response(JSON.stringify({ error: { message: "upstream returned error in success body" } }), {
+      status: 200,
+      headers: { "Content-Type": "application/json; charset=utf-8" },
+    });
+  };
+
+  await assert.rejects(
+    () => transcribeWithNvidia({
+      provider: {
+        transport: "nvidia-http",
+        endpoint: "https://asr.example.test/v1/audio/transcriptions",
+        model: "mock-asr",
+        apiKey: "test-only-token",
+        languageCode: "zh",
+        sendModel: true,
+      },
+      file: tinyWavBuffer(),
+      fileName: "api-transcribe-ok-error.wav",
+    }),
+    (error) => {
+      assert.equal(error.asrStage, "调用 HTTP 转写端点");
+      assert.match(error.message, /upstream returned error in success body/);
+      return true;
+    },
+  );
+
+  globalThis.fetch = async (url) => {
+    requests.push({ url, mode: "http-empty-success" });
+    return new Response(JSON.stringify({ ok: true }), {
+      status: 200,
+      headers: { "Content-Type": "application/json; charset=utf-8" },
+    });
+  };
+
+  await assert.rejects(
+    () => transcribeWithNvidia({
+      provider: {
+        transport: "nvidia-http",
+        endpoint: "https://asr.example.test/v1/audio/transcriptions",
+        model: "mock-asr",
+        apiKey: "test-only-token",
+        languageCode: "zh",
+        sendModel: true,
+      },
+      file: tinyWavBuffer(),
+      fileName: "api-transcribe-empty.wav",
+    }),
+    (error) => {
+      assert.equal(error.asrStage, "调用 HTTP 转写端点");
+      assert.match(error.message, /未返回可用转写文本/);
+      return true;
+    },
+  );
+
+  globalThis.fetch = async (url) => {
+    requests.push({ url, mode: "http-nested-output" });
+    return new Response(JSON.stringify({
+      output: {
+        text: "nested output transcription",
+        segments: [{ start: 0, end: 1.3, text: "nested output transcription" }],
+      },
+    }), {
+      status: 200,
+      headers: { "Content-Type": "application/json; charset=utf-8" },
+    });
+  };
+
+  const nestedOutputResult = await transcribeWithNvidia({
+    provider: {
+      transport: "nvidia-http",
+      endpoint: "https://asr.example.test/v1/audio/transcriptions",
+      model: "mock-asr",
+      apiKey: "test-only-token",
+      languageCode: "zh",
+      sendModel: true,
+    },
+    file: tinyWavBuffer(),
+    fileName: "api-transcribe-nested.wav",
+  });
+
+  assert.equal(nestedOutputResult.text, "nested output transcription");
+  assert.equal(nestedOutputResult.segments.length, 1);
+
   const rows = rowsFromAsrResult(result, 5);
   assert.deepEqual(
     rows.map((row) => ({ start: row.start, end: row.end, speaker: row.speaker, text: row.text })),
@@ -256,7 +341,7 @@ try {
     fileName: "openai-whisper-test.wav",
   });
 
-  assert.equal(requests.length, 9);
+  assert.equal(requests.length, 12);
   assert.equal(whisperResult.words.length, 2);
   assert.equal(whisperResult.segments.length, 1);
 
@@ -296,7 +381,7 @@ try {
     fileName: "groq-whisper-test.wav",
   });
 
-  assert.equal(requests.length, 10);
+  assert.equal(requests.length, 13);
   assert.equal(groqResult.words.length, 1);
   assert.equal(groqResult.segments.length, 1);
 
@@ -328,7 +413,7 @@ try {
     fileName: "groq-env-test.wav",
   });
 
-  assert.equal(requests.length, 11);
+  assert.equal(requests.length, 14);
   assert.equal(groqEnvResult.segments.length, 1);
   delete process.env.DASHSCOPE_API_KEY;
   delete process.env.GROQ_API_KEY;
@@ -386,7 +471,7 @@ try {
     fileName: "nvidia-nim-test.wav",
   });
 
-  assert.equal(requests.length, 12);
+  assert.equal(requests.length, 15);
   assert.equal(nimResult.segments.length, 1);
 
   const qwenDashScopeRequestCount = requests.length;
@@ -548,6 +633,73 @@ try {
   } else {
     process.env.ECHO_ASR_FETCH_TIMEOUT_MS = previousAsrFetchTimeout;
   }
+
+  globalThis.fetch = async (url, options = {}) => {
+    if (url === "https://dashscope.aliyuncs.com/api/v1/uploads?action=getPolicy&model=fun-asr") {
+      return new Response(JSON.stringify({
+        data: {
+          upload_dir: "dashscope-temp/echo/",
+          oss_access_key_id: "oss-test-id",
+          signature: "oss-signature",
+          policy: "oss-policy",
+          x_oss_object_acl: "private",
+          x_oss_forbid_overwrite: "true",
+          upload_host: "https://dashscope-upload.example.test",
+        },
+      }), {
+        status: 200,
+        headers: { "Content-Type": "application/json; charset=utf-8" },
+      });
+    }
+    if (url === "https://dashscope-upload.example.test") {
+      assert.equal(options.method, "POST");
+      return new Response("", { status: 200 });
+    }
+    if (url === "https://dashscope.aliyuncs.com/api/v1/services/audio/asr/transcription") {
+      return new Response(JSON.stringify({ output: { task_id: "task-empty-result", task_status: "PENDING" } }), {
+        status: 200,
+        headers: { "Content-Type": "application/json; charset=utf-8" },
+      });
+    }
+    if (url === "https://dashscope.aliyuncs.com/api/v1/tasks/task-empty-result") {
+      return new Response(JSON.stringify({
+        output: {
+          task_id: "task-empty-result",
+          task_status: "SUCCEEDED",
+          results: [{ transcription_url: "https://dashscope-result.example.test/empty.json" }],
+        },
+      }), {
+        status: 200,
+        headers: { "Content-Type": "application/json; charset=utf-8" },
+      });
+    }
+    if (url === "https://dashscope-result.example.test/empty.json") {
+      return new Response(JSON.stringify({ transcripts: [] }), {
+        status: 200,
+        headers: { "Content-Type": "application/json; charset=utf-8" },
+      });
+    }
+    throw new Error(`unexpected fetch ${url}`);
+  };
+
+  await assert.rejects(
+    () => transcribeWithNvidia({
+      provider: {
+        transport: "dashscope-funasr",
+        endpoint: "https://dashscope.aliyuncs.com/api/v1",
+        model: "fun-asr",
+        apiKey: "dashscope-test-token",
+        languageCode: "zh",
+      },
+      file: tinyWavBuffer(),
+      fileName: "dashscope-empty-result.mp4",
+    }),
+    (error) => {
+      assert.equal(error.asrStage, "读取百炼转写结果");
+      assert.match(error.message, /未返回可用转写文本/);
+      return true;
+    },
+  );
 
   console.log("asr api tests passed");
 } finally {

@@ -662,6 +662,17 @@ function asrEnvKeyStatus() {
   };
 }
 
+function asrTestSampleText(languageCode = "", format = "m4a") {
+  const code = String(languageCode || "").toLowerCase();
+  if (format === "wav" || code.startsWith("en")) {
+    return "Echo workbench transcription test. This is a clear speech sample.";
+  }
+  if (code.startsWith("zh")) {
+    return "回响工作台转写测试。视频智能字幕，音频转写。";
+  }
+  return "Echo workbench transcription test. 回响工作台转写测试。视频智能字幕，音频转写。";
+}
+
 function resolveRivaPython() {
   const configured = String(process.env.NVIDIA_RIVA_PYTHON || "").trim();
   if (configured) return configured;
@@ -686,7 +697,7 @@ export function sanitizeNvidiaAsrError(error) {
     return "云端转写端点不可用。需要在模型配置中切换预设，或核对 HTTP Endpoint / Riva Function ID。";
   }
   if (/unavailable model requested|language_code|unsupported language|invalid_argument/.test(lower)) {
-    return "当前转写端点拒绝了识别语言或音频参数。系统已避免写入不完整结果；该端点与当前测试样本或素材不兼容。";
+    return "当前转写配置未通过语言或音频参数校验。系统已阻止启用该配置，并避免写入不完整结果。";
   }
   if (/deadline|timeout|timed out|unavailable|temporarily unavailable/.test(lower)) {
     return "云端转写请求超时或上游暂不可用。系统已保留当前任务，可稍后重试；长音频建议切换更稳定的模型或缩短文件后再试。";
@@ -695,7 +706,7 @@ export function sanitizeNvidiaAsrError(error) {
     return "云端转写上游推理请求未完成。系统未写入不完整结果；连续失败时需要切换转写模型或核对当前端点权限。";
   }
   if (/invalid|audio|encoding|sample|format|decode|wav|flac/.test(lower)) {
-    return "云端转写服务无法识别当前音频输入。系统已保留媒体且未写入不完整结果；该端点不兼容当前音频格式。";
+    return "云端转写服务无法识别当前音频输入。系统已保留媒体且未写入不完整结果；当前配置未通过音频格式校验。";
   }
   if (/dashscope|task_status|transcription_url|oss|policy|upload/.test(lower)) {
     return "百炼转写任务未完成。系统已保留当前任务；连续失败时需要更换 DashScope Key、模型权限、文件格式或网络环境后重试。";
@@ -842,6 +853,78 @@ function supportsVerboseJsonTranscription({ endpoint, model }) {
   );
 }
 
+function objectMessage(value) {
+  if (!value) return "";
+  if (typeof value === "string") return value;
+  if (typeof value === "object") return value.message || value.error || value.detail || "";
+  return String(value);
+}
+
+function responseErrorMessage(data = {}) {
+  return objectMessage(data.error)
+    || objectMessage(data.detail)
+    || objectMessage(data.message)
+    || objectMessage(data.output?.error)
+    || objectMessage(data.output?.message)
+    || objectMessage(data.data?.error)
+    || objectMessage(data.data?.message)
+    || "";
+}
+
+function firstString(...values) {
+  for (const value of values) {
+    if (typeof value !== "string") continue;
+    const clean = value.trim();
+    if (clean) return clean;
+  }
+  return "";
+}
+
+function normalizeGenericAsrResponse(data = {}, provider = "nvidia-http") {
+  const output = data.output && typeof data.output === "object" ? data.output : {};
+  const nestedData = data.data && typeof data.data === "object" ? data.data : {};
+  const text = firstString(
+    data.text,
+    data.transcript,
+    data.transcription,
+    output.text,
+    output.transcript,
+    output.transcription,
+    nestedData.text,
+    nestedData.transcript,
+    nestedData.transcription,
+  );
+  const segments = Array.isArray(data.segments)
+    ? data.segments
+    : Array.isArray(data.results)
+      ? data.results
+      : Array.isArray(output.segments)
+        ? output.segments
+        : Array.isArray(output.results)
+          ? output.results
+          : Array.isArray(nestedData.segments)
+            ? nestedData.segments
+            : [];
+  const words = Array.isArray(data.words)
+    ? data.words
+    : Array.isArray(output.words)
+      ? output.words
+      : Array.isArray(nestedData.words)
+        ? nestedData.words
+        : [];
+  return { text, segments, words, provider };
+}
+
+function assertUsableAsrResult(result = {}, context = "云端 ASR") {
+  const hasText = Boolean(String(result.text || result.transcript || "").trim());
+  const hasSegments = Array.isArray(result.segments) && result.segments.some((segment) => String(segment?.text || segment?.transcript || segment?.sentence || "").trim());
+  const hasWords = Array.isArray(result.words) && result.words.some((word) => String(word?.word || word?.text || word?.token || "").trim());
+  if (!hasText && !hasSegments && !hasWords) {
+    throw new Error(`${context}未返回可用转写文本。`);
+  }
+  return result;
+}
+
 function runPythonAsr({ apiKey, filePath, functionId, endpoint, languageCode, translate }) {
   const scriptPath = join(process.cwd(), "scripts", "nvidia_riva_asr.py");
   const python = resolveRivaPython();
@@ -922,16 +1005,14 @@ async function callNvidiaHttpAsr({ apiKey, endpoint, model, languageCode, file, 
   } catch {
     data = { raw: text };
   }
+  const upstreamError = responseErrorMessage(data)
+    || (String(data.status || data.output?.status || "").toLowerCase() === "error" ? "云端 ASR 返回错误状态。" : "");
   if (!response.ok) {
-    const message = data?.detail || data?.error?.message || data?.message || `云端 ASR 请求失败：${response.status}`;
+    const message = upstreamError || `云端 ASR 请求失败：${response.status}`;
     throw new Error(sanitizeNvidiaAsrError(message));
   }
-  return {
-    text: data.text || data.transcript || data.transcription || data.output || "",
-    segments: data.segments || data.results || [],
-    words: data.words || [],
-    provider: "nvidia-http",
-  };
+  if (upstreamError) throw new Error(sanitizeNvidiaAsrError(upstreamError));
+  return assertUsableAsrResult(normalizeGenericAsrResponse(data, "nvidia-http"), "HTTP 转写端点");
 }
 
 function dashScopeBaseUrl(endpoint) {
@@ -1024,12 +1105,12 @@ function normalizeDashScopeTranscription(data = {}) {
     }
   }
   if (!text) text = String(data.text || data.transcript || "").trim();
-  return {
+  return assertUsableAsrResult({
     text,
     segments: sentences,
     words: [],
     provider: "dashscope-funasr",
-  };
+  }, "百炼转写结果");
 }
 
 async function getDashScopeUploadPolicy({ apiKey, baseUrl, model }) {
@@ -1153,7 +1234,7 @@ async function callDashScopeFunAsr({ apiKey, endpoint, model, languageCode, file
     const resultResponse = await fetchWithAsrTimeout(transcriptionUrl, {}, "读取百炼转写结果超时。");
     return readJsonResponse(resultResponse, "读取百炼转写结果失败。");
   });
-  return normalizeDashScopeTranscription(resultData);
+  return withAsrStage("读取百炼转写结果", () => normalizeDashScopeTranscription(resultData));
 }
 
 function offsetRivaTimingItems(items = [], offset = 0) {
@@ -1398,9 +1479,7 @@ function registerLocalApi(middlewares, mode) {
           const samplePath = join(tempDir, sampleName);
           await generateSpeechSample({
             outputPath: samplePath,
-            text: format === "wav"
-              ? "Echo workbench transcription test. This is a clear speech sample."
-              : "Echo workbench transcription test. 回响工作台转写测试。视频智能字幕，音频转写。",
+            text: asrTestSampleText(url.searchParams.get("language"), format),
             format,
             tempDir,
           });

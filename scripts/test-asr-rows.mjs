@@ -142,6 +142,19 @@ assert.ok(
   "ASR plain-text fallback should split long subtitle rows into readable units",
 );
 
+const mixedLanguageRows = rowsFromAsrResult({
+  segments: [{
+    start: 0,
+    end: 8,
+    text: "我以为我们只能给 Kade 最糟糕的最糟糕的，就像这个人 Kade 可以有他在这里继续补充后面的长句。",
+  }],
+}, 8);
+assert.ok(mixedLanguageRows.length >= 3, "mixed Chinese and English ASR segments should not stay as one oversized subtitle row");
+assert.ok(
+  mixedLanguageRows.every((row) => transcriptWeight(row.text) <= 18),
+  `mixed ASR rows should stay readable, got ${mixedLanguageRows.map((row) => row.text).join(" | ")}`,
+);
+
 assert.deepEqual(rowsFromAsrResult({}, 10), []);
 
 assert.equal(asrResultHasTiming({ words: [{ start: 0, end: 0.3, word: "Hello" }] }), true);
