@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import { chromium } from "playwright";
 
 const NVIDIA_RIVA_PROVIDER = {
@@ -18,12 +18,22 @@ const NVIDIA_RIVA_PROVIDER = {
   lastTest: { ok: true, message: "测试通过", at: Date.now() },
 };
 
+const SHORT_SAMPLE_TEXT = "Echo workbench transcription test. This is a stable audio transcription sample.";
+const LONG_SAMPLE_TEXT = [
+  "Echo workbench transcription test.",
+  "First, we upload a media file and wait for the transcription result.",
+  "Then we review every segment, fix punctuation, and export subtitles.",
+  "If the speech recognition service returns long paragraphs without clear sentence breaks,",
+  "the workbench should split the text into readable rows automatically.",
+  "Users should not be asked to solve time overlap or oversized subtitle problems by themselves.",
+].join(" ");
+
 function usage() {
   return [
     "Usage:",
     "  NVIDIA_API_KEY=... npm run test:asr-ui-live",
     "",
-    "This launches an isolated local app, generates a short English WAV sample,",
+    "This launches an isolated local app, generates English WAV samples,",
     "then verifies the real workbench UI can start NVIDIA Riva transcription",
     "and that incompatible Chinese-source Riva settings are blocked before ASR is called.",
   ].join("\n");
@@ -95,12 +105,12 @@ async function configureWorkspace(baseUrl, root) {
   assert.equal(response.ok, true, await response.text());
 }
 
-async function prepareSampleWav(root) {
-  const aiffPath = join(root, "echo-ui-live-sample.aiff");
-  const wavPath = join(root, "echo-ui-live-sample.wav");
+async function prepareSampleWav(root, name, text) {
+  const aiffPath = join(root, `${name}.aiff`);
+  const wavPath = join(root, `${name}.wav`);
   await runCommand(
     "say",
-    ["-o", aiffPath, "Echo workbench transcription test. This is a stable audio transcription sample."],
+    ["-o", aiffPath, text],
     "无法生成系统语音样本，请改用 macOS 或手动扩展该测试",
   );
   await runCommand(
@@ -139,7 +149,8 @@ async function openAudioWorkbench(page, baseUrl, samplePath, sourceLanguage) {
   await page.getByLabel("源语言").selectOption({ label: sourceLanguage });
   await page.getByLabel("目标语言").selectOption({ label: sourceLanguage === "英文" ? "中文" : "英文" });
   await page.locator("input[type=\"file\"]").first().setInputFiles(samplePath);
-  await page.waitForFunction(() => document.body.textContent.includes("echo-ui-live-sample.wav"));
+  const fileName = basename(samplePath);
+  await page.waitForFunction((name) => document.body.textContent.includes(name), fileName);
 }
 
 async function verifySuccessfulTranscription(page, baseUrl, samplePath) {
@@ -167,6 +178,33 @@ async function verifySuccessfulTranscription(page, baseUrl, samplePath) {
   assert.ok(maxEnd > 0, `transcription table should expose subtitle timecodes: ${tableText}`);
   assert.ok(maxEnd < 12, `short live-ASR sample should not be stretched across the media fallback duration, got ${maxEnd}s`);
   return tableText.slice(0, 260);
+}
+
+async function verifyLongTranscriptionRepair(page, baseUrl, samplePath) {
+  await openAudioWorkbench(page, baseUrl, samplePath, "英文");
+  const startButton = page.getByRole("button", { name: /开始转写/ }).first();
+  assert.equal(await startButton.isEnabled(), true, "long English Riva audio should enable the start button");
+  await startButton.click();
+  await page.waitForFunction(
+    () => document.querySelectorAll(".subtitle-table .table-row:not(.table-head)").length >= 5 || document.querySelector(".transcription-status-card.error"),
+    null,
+    { timeout: 90_000 },
+  );
+  const errorCard = await page.locator(".transcription-status-card.error").count();
+  if (errorCard) throw new Error(await page.locator(".transcription-status-card.error").innerText());
+  const tableText = await page.locator(".subtitle-table").innerText();
+  assert.match(tableText.toLowerCase(), /workbench|transcription|subtitle|readable rows/);
+  const reviewRows = await page.locator(".subtitle-table .table-row:not(.table-head)").count();
+  assert.ok(reviewRows >= 5, `long live ASR result should become several reviewable rows, got ${reviewRows}: ${tableText}`);
+  assert.doesNotMatch(
+    await page.locator(".subtitle-editor").innerText(),
+    /时间重叠|时间无效|单条过长|阅读过快|时长过短|下一处提示|拆分长段/,
+    "long live ASR result should be automatically repaired before proofreading",
+  );
+  const maxEnd = maxSubtitleEndSeconds(tableText);
+  assert.ok(maxEnd > 5, `long transcription table should expose meaningful timecodes: ${tableText}`);
+  assert.ok(maxEnd < 60, `long live-ASR sample should not be stretched across an unrealistic duration, got ${maxEnd}s`);
+  return tableText.slice(0, 360);
 }
 
 async function verifyIncompatibleLanguageBlocked(page, baseUrl, samplePath) {
@@ -199,7 +237,8 @@ try {
   configDir = await mkdtemp(join(tmpdir(), "echo-ui-live-config-"));
   workspaceRoot = await mkdtemp(join(tmpdir(), "echo-ui-live-workspace-"));
   tempRoot = await mkdtemp(join(tmpdir(), "echo-ui-live-sample-"));
-  const samplePath = await prepareSampleWav(tempRoot);
+  const samplePath = await prepareSampleWav(tempRoot, "echo-ui-live-sample", SHORT_SAMPLE_TEXT);
+  const longSamplePath = await prepareSampleWav(tempRoot, "echo-ui-live-long-sample", LONG_SAMPLE_TEXT);
 
   server = spawn(process.execPath, [
     "node_modules/vite/bin/vite.js",
@@ -232,6 +271,7 @@ try {
   await seedRivaProvider(page);
 
   const rowsPreview = await verifySuccessfulTranscription(page, baseUrl, samplePath);
+  const longRowsPreview = await verifyLongTranscriptionRepair(page, baseUrl, longSamplePath);
   const blocked = await verifyIncompatibleLanguageBlocked(page, baseUrl, samplePath);
   assert.equal(browserErrors.length, 0, `browser errors: ${browserErrors.join("\n")}`);
 
@@ -240,6 +280,7 @@ try {
     provider: "nvidia-riva-grpc",
     sampleFile: "generated",
     successRowsPreview: rowsPreview,
+    longRowsPreview,
     blocked,
   }, null, 2));
 } finally {

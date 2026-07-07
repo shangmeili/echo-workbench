@@ -269,6 +269,16 @@ assert.deepEqual(
 );
 assertWorkbenchQuality(fragmentRows, "short fragment repair");
 
+const englishLeadInRows = normalizeLikeWorkbench([
+  { id: "lead", start: 0, end: 2.1, speaker: "未标注", text: "First,", translation: "" },
+  { id: "body", start: 2.1, end: 6.1, speaker: "未标注", text: "we upload a media file and wait for the transcription result.", translation: "" },
+]);
+assert.deepEqual(
+  englishLeadInRows.map((row) => row.text),
+  ["First, we upload a media file and wait for the transcription result."],
+);
+assertWorkbenchQuality(englishLeadInRows, "English lead-in fragment repair");
+
 const importedSubtitleRows = normalizeLikeWorkbench(parseSubtitle([
   "1",
   "00:00:01,000 --> 00:00:04,000",

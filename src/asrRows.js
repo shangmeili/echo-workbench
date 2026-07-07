@@ -247,6 +247,10 @@ const englishSentenceStartWords = new Set([
   "then", "so", "but", "and", "for", "now",
 ]);
 
+const englishLeadInWords = new Set([
+  "first", "second", "third", "next", "then", "finally", "also", "now", "so", "well",
+]);
+
 function cleanEnglishWord(word) {
   return String(word || "").replace(/^[^A-Za-z0-9']+|[^A-Za-z0-9']+$/g, "").toLowerCase();
 }
@@ -879,6 +883,12 @@ function isShortFragment(row) {
   return rowDuration(row) < 1.05 || units <= 4;
 }
 
+function isEnglishLeadInFragment(text) {
+  const clean = normalizeAsrText(text);
+  if (!/^[A-Za-z]+[,]?$/.test(clean)) return false;
+  return englishLeadInWords.has(cleanEnglishWord(clean));
+}
+
 function startsLikelyNewSubtitleClause(previous, current) {
   const previousText = normalizeAsrText(previous?.text || "");
   const currentText = normalizeAsrText(current?.text || "");
@@ -924,15 +934,18 @@ export function mergeShortAdjacentAsrRows(rows, options = {}) {
     const preserveBoundary = preserveBoundaries.has(`${previous.id}\u0000${current.id}`);
     const combinedText = joinAdjacentAsrText(previous.text, current.text);
     const combinedDuration = Math.max(finiteNumber(previous.end, 0), finiteNumber(current.end, 0)) - finiteNumber(previous.start, 0);
+    const previousLeadInFragment = isEnglishLeadInFragment(previous.text);
+    const allowedCombinedDuration = previousLeadInFragment ? Math.max(maxCombinedDuration, 7) : maxCombinedDuration;
+    const allowedMergedUnits = previousLeadInFragment && isLatinText(combinedText) ? Math.max(maxMergedUnits(combinedText), 14) : maxMergedUnits(combinedText);
     const shouldMerge = sameSpeaker(previous, current)
       && gap >= -0.05
       && gap <= maxGapSeconds
-      && combinedDuration <= maxCombinedDuration
+      && combinedDuration <= allowedCombinedDuration
       && !preserveBoundary
       && !isSentenceClosed(previous.text)
       && !startsLikelyNewSubtitleClause(previous, current)
-      && transcriptWeight(combinedText) <= maxMergedUnits(combinedText)
-      && (isShortFragment(previous) || isShortFragment(current));
+      && transcriptWeight(combinedText) <= allowedMergedUnits
+      && (isShortFragment(previous) || isShortFragment(current) || previousLeadInFragment);
 
     if (!shouldMerge) {
       result.push(current);

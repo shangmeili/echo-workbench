@@ -567,6 +567,14 @@ assert.deepEqual(
   ],
 );
 
+assert.deepEqual(
+  mergeShortAdjacentAsrRows([
+    { id: "lead", start: 0, end: 2.1, speaker: "S1", text: "First,", translation: "" },
+    { id: "body", start: 2.1, end: 6.1, speaker: "S1", text: "we upload a media file and wait for the transcription result.", translation: "" },
+  ], { maxGapSeconds: 0.85, maxCombinedDuration: 5.8 }).map((row) => row.text),
+  ["First, we upload a media file and wait for the transcription result."],
+);
+
 assert.equal(
   mergeShortAdjacentAsrRows([
     { id: "a", start: 0, end: 0.8, speaker: "S1", text: "I can", translation: "" },
