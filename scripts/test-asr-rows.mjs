@@ -218,7 +218,8 @@ assert.deepEqual(
 assert.deepEqual(
   splitTranscriptIntoSentences("开始转写失败以后页面不能只是恢复按钮状态而应该展示具体失败阶段并保留可重试状态"),
   [
-    "开始转写失败以后页面不能只是恢复按钮状态",
+    "开始转写失败以后页面",
+    "不能只是恢复按钮状态",
     "而应该展示具体失败阶段",
     "并保留可重试状态",
   ],
@@ -690,6 +691,44 @@ for (const scenario of [
     },
     expectedText: /转写不是翻译\|翻译只应该作为附加功能在\|源语言和目标语言/,
     rejectedText: /转写\|不是|源语言和目\||\|附加功能在\||源语言\|和目标语言/,
+  },
+  {
+    name: "fragmented user-facing config failure",
+    duration: 20,
+    result: {
+      segments: [
+        { start: 0, end: 7, text: "普通" },
+        { start: 6.2, end: 13, text: "普通用户无法判断模型配置测试失败" },
+        { start: 12.3, end: 20, text: "试失败的原因页面需要说明具体原因并给出可以自动修复的动作" },
+      ],
+    },
+    expectedText: /普通用户无法判断\|模型配置测试失败的原因/,
+    rejectedText: /普通\|用户|用户\|无法判断|模型配置\|测试失败|具体\|原因/,
+  },
+  {
+    name: "overlapping service errors should not be user chores",
+    duration: 20,
+    result: {
+      segments: [
+        { start: 0, end: 9, text: "转写服务返回的时" },
+        { start: 8.2, end: 20, text: "的时间轴重叠和断句异常不能交给用户自己处理应该在导入阶段自动修复" },
+      ],
+    },
+    expectedText: /转写服务返回的时间轴重叠\|和断句异常不能交给用户自己处理/,
+    rejectedText: /时间\|重叠|用户\|自己|给\|用户|的时\|间轴/,
+  },
+  {
+    name: "overlapping reset state keeps full start-transcribe phrase",
+    duration: 20,
+    result: {
+      segments: [
+        { start: 0, end: 7, text: "用户点击开始转写以后按钮变成转写中" },
+        { start: 6.2, end: 13, text: "但是过一段时间又恢复成" },
+        { start: 12.3, end: 20, text: "复成开始转写页面没有告诉我到底失败在哪里这类错误不应该作为提示由用户解决" },
+      ],
+    },
+    expectedText: /恢复成开始转写页面/,
+    rejectedText: /恢复成\|开始转写|(^|\|)复成开始|作为\|提示/,
   },
 ]) {
   const repairedRows = repairReviewStructure(rowsFromAsrResult(scenario.result, scenario.duration), { maxEnd: scenario.duration }).rows;

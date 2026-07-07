@@ -37,6 +37,10 @@ const phraseBreakBeforePatterns = [
   "最近项目", "本地工作区", "视频上传后", "导出字幕前", "服务返回失败",
   "这对普通用户来说", "没有按照", "时间重叠也不应该", "而应该", "并保留",
   "翻译只应该", "源语言和目标语言",
+  "上传视频后", "转写服务返回", "模型返回失败时页面", "普通用户无法判断", "模型配置测试失败",
+  "不能只是", "工作台需要", "这个项目的主要功能", "不要把这种错误",
+  "不一致时", "所有字幕转写", "从本地副本打开", "应该回到", "模型配置测试失败的原因",
+  "源语言和目标语言应该保持在同一行", "翻译只应该作为源语言和目标语言",
 ];
 
 const phraseStrongBreakBeforePatterns = new Set([
@@ -51,6 +55,10 @@ const phraseStrongBreakBeforePatterns = new Set([
   "最近项目", "本地工作区", "视频上传后", "导出字幕前", "服务返回失败",
   "这对普通用户来说", "没有按照", "时间重叠也不应该", "而应该", "并保留",
   "翻译只应该", "源语言和目标语言",
+  "上传视频后", "转写服务返回", "模型返回失败时页面", "普通用户无法判断", "模型配置测试失败",
+  "不能只是", "工作台需要", "这个项目的主要功能", "不要把这种错误",
+  "不一致时", "所有字幕转写", "从本地副本打开", "应该回到", "模型配置测试失败的原因",
+  "源语言和目标语言应该保持在同一行", "翻译只应该作为源语言和目标语言",
 ]);
 
 const implicitBreakBeforePatterns = [
@@ -64,6 +72,10 @@ const implicitBreakBeforePatterns = [
   "最近项目", "本地工作区", "视频上传后", "导出字幕前", "服务返回失败",
   "这对普通用户来说", "没有按照", "时间重叠也不应该", "而应该", "并保留",
   "翻译只应该", "源语言和目标语言",
+  "上传视频后", "转写服务返回", "模型返回失败时页面", "普通用户无法判断", "模型配置测试失败",
+  "不能只是", "工作台需要", "这个项目的主要功能", "不要把这种错误",
+  "不一致时", "所有字幕转写", "从本地副本打开", "应该回到", "模型配置测试失败的原因",
+  "源语言和目标语言应该保持在同一行", "翻译只应该作为源语言和目标语言",
 ];
 
 const phraseBreakAfterPatterns = [
@@ -81,7 +93,15 @@ const protectedCjkSplitPairs = new Set([
 const protectedCjkSplitPhrases = [
   "普通用户来说", "普通用户", "产品经理", "上线计划", "专有名词", "开始转写页面",
   "到底失败在哪里", "服务返回失败", "返回失败", "把翻译", "直接可以", "视频上传后应该",
-  "这对普通用户来说", "合理的断句", "转写不是翻译", "翻译只应该", "源语言和目标语言",
+  "这对普通用户来说", "合理的断句", "转写不是翻译", "不是翻译", "翻译只应该",
+  "源语言和目标语言", "源语言和目标语言不一致", "时间码可能", "模型配置测试失败",
+  "普通用户无法判断", "需要说明具体原因", "功能问题自动修复", "媒体预览和当前段落",
+  "源语言和目标语言应该保持在同一行",
+  "上传视频后应该直接可以开始转写", "开始转写", "时间重叠也不应该",
+  "时间轴重叠", "恢复成开始转写页面", "作为提示由用户解决", "交给用户自己处理", "用户自己处理",
+  "校对界面", "应该回到校对界面", "从本地副本打开继续处理",
+  "继续处理", "模型配置测试失败的原因", "不能只是", "不能只是恢复成开始转写按钮",
+  "翻译只应该作为源语言和目标语言",
 ];
 
 function startsWithPattern(text, patterns) {
@@ -102,6 +122,8 @@ function isProtectedCjkPatternBoundary(value, index, pattern) {
   if (pattern === "应该" && text[index - 1] === "不") return true;
   if (pattern === "应该" && text[index - 1] === "后") return true;
   if (pattern === "应该" && text[index - 1] === "只") return true;
+  if (pattern === "应该" && text.slice(index - 4, index) === "目标语言") return true;
+  if (pattern === "可能" && text.slice(index - 3, index) === "时间码") return true;
   if (pattern === "也不应该" && text.slice(index - 4, index) === "时间重叠") return true;
   if (pattern === "可以" && text[index - 1] === "不") return true;
   if (pattern === "可以" && text[index - 1] === "否") return true;
@@ -116,6 +138,7 @@ function isProtectedCjkPatternBoundary(value, index, pattern) {
 function shouldSkipCjkBreakBefore(value, index, pattern) {
   const text = String(value || "");
   if (pattern === "系统" && !text.slice(index).startsWith("系统应该")) return true;
+  if (pattern === "源语言和目标语言" && text.slice(index - 2, index) === "作为") return true;
   if (pattern === "翻译" && text[index - 1] === "把") return true;
   return false;
 }
@@ -975,6 +998,11 @@ function isEnglishLeadInFragment(text) {
   return englishLeadInWords.has(cleanEnglishWord(clean));
 }
 
+function isWeakCjkContinuationFragment(text) {
+  const clean = normalizeAsrText(text);
+  return /[\u4e00-\u9fa5]/.test(clean) && /(作为|不能|需要|应该|以及|和|与|或|交给|恢复成|时的)$/.test(clean);
+}
+
 function startsLikelyNewSubtitleClause(previous, current) {
   const previousText = normalizeAsrText(previous?.text || "");
   const currentText = normalizeAsrText(current?.text || "");
@@ -1021,8 +1049,13 @@ export function mergeShortAdjacentAsrRows(rows, options = {}) {
     const combinedText = joinAdjacentAsrText(previous.text, current.text);
     const combinedDuration = Math.max(finiteNumber(previous.end, 0), finiteNumber(current.end, 0)) - finiteNumber(previous.start, 0);
     const previousLeadInFragment = isEnglishLeadInFragment(previous.text);
+    const previousWeakContinuation = isWeakCjkContinuationFragment(previous.text);
     const allowedCombinedDuration = previousLeadInFragment ? Math.max(maxCombinedDuration, 7) : maxCombinedDuration;
-    const allowedMergedUnits = previousLeadInFragment && isLatinText(combinedText) ? Math.max(maxMergedUnits(combinedText), 14) : maxMergedUnits(combinedText);
+    const allowedMergedUnits = previousLeadInFragment && isLatinText(combinedText)
+      ? Math.max(maxMergedUnits(combinedText), 14)
+      : previousWeakContinuation
+        ? Math.max(maxMergedUnits(combinedText), 20)
+        : maxMergedUnits(combinedText);
     const shouldMerge = sameSpeaker(previous, current)
       && gap >= -0.05
       && gap <= maxGapSeconds
@@ -1031,7 +1064,7 @@ export function mergeShortAdjacentAsrRows(rows, options = {}) {
       && !isSentenceClosed(previous.text)
       && !startsLikelyNewSubtitleClause(previous, current)
       && transcriptWeight(combinedText) <= allowedMergedUnits
-      && (isShortFragment(previous) || isShortFragment(current) || previousLeadInFragment);
+      && (isShortFragment(previous) || isShortFragment(current) || previousLeadInFragment || previousWeakContinuation);
 
     if (!shouldMerge) {
       result.push(current);
@@ -1188,11 +1221,43 @@ function trimPartialProtectedPhraseSuffix(previousText, currentText) {
   for (const phrase of protectedCjkSplitPhrases) {
     if (!current.startsWith(phrase)) continue;
     const maxPrefixLength = Math.min(phrase.length - 1, previous.length);
-    for (let size = maxPrefixLength; size >= 3; size -= 1) {
+    const minimumPrefixLength = phrase.startsWith("不能") ? 2 : 3;
+    for (let size = maxPrefixLength; size >= minimumPrefixLength; size -= 1) {
       const prefix = phrase.slice(0, size);
       if (!previous.endsWith(prefix)) continue;
       const trimmed = normalizeAsrText(previous.slice(0, -prefix.length));
       if (transcriptWeight(trimmed) >= 4) return trimmed;
+    }
+  }
+  return null;
+}
+
+function minimumProtectedPhrasePrefixLength(phrase) {
+  if (/^(作为提示|时间轴)/.test(phrase)) return 1;
+  if (/^(普通|时间|合理|源语言|用户|交给)/.test(phrase)) return 2;
+  if (phrase.startsWith("不能")) return 2;
+  return 3;
+}
+
+function repairProtectedPhraseAcrossBoundary(previousText, currentText) {
+  const previous = normalizeAsrText(previousText);
+  const current = normalizeAsrText(currentText);
+  if (!previous || !current) return null;
+
+  for (const phrase of protectedCjkSplitPhrases) {
+    if (phrase.length < 4) continue;
+    const minimumPrefixLength = minimumProtectedPhrasePrefixLength(phrase);
+    for (let prefixLength = phrase.length - 1; prefixLength >= minimumPrefixLength; prefixLength -= 1) {
+      const prefix = phrase.slice(0, prefixLength);
+      if (!previous.endsWith(prefix)) continue;
+      const rest = phrase.slice(prefixLength);
+      if (!rest) continue;
+      const restIndex = current.indexOf(rest);
+      if (restIndex < 0 || restIndex > 4) continue;
+      return {
+        previousText: normalizeAsrText(`${previous.slice(0, -prefix.length)}${phrase}`),
+        currentText: normalizeAsrText(current.slice(restIndex + rest.length)),
+      };
     }
   }
   return null;
@@ -1206,7 +1271,7 @@ export function dedupeAdjacentAsrRows(rows, maxGapSeconds = 1.2) {
   });
   const result = [];
   for (const row of sorted) {
-    const text = normalizeAsrText(row?.text || "");
+    let text = normalizeAsrText(row?.text || "");
     if (!text) continue;
     const previous = result.at(-1);
     const previousText = normalizeAsrText(previous?.text || "");
@@ -1226,12 +1291,37 @@ export function dedupeAdjacentAsrRows(rows, maxGapSeconds = 1.2) {
       };
       continue;
     }
+    if (
+      closeToPrevious
+      && transcriptWeight(previousText) <= 3
+      && compactOverlapText(text).startsWith(compactOverlapText(previousText))
+    ) {
+      result[result.length - 1] = {
+        ...row,
+        start: finiteNumber(previous.start, 0),
+        end: Math.max(finiteNumber(previous.end, 0), finiteNumber(row.end, 0)),
+        text,
+      };
+      continue;
+    }
     if (closeToPrevious) {
       const trimmedPrevious = trimPartialProtectedPhraseSuffix(previousText, text);
       if (trimmedPrevious) {
         result[result.length - 1] = { ...previous, text: trimmedPrevious };
         result.push({ ...row, text });
         continue;
+      }
+    }
+    if (closeToPrevious) {
+      const phraseRepair = repairProtectedPhraseAcrossBoundary(previousText, text);
+      if (phraseRepair) {
+        result[result.length - 1] = {
+          ...previous,
+          end: Math.max(finiteNumber(previous.end, 0), finiteNumber(row.end, 0)),
+          text: phraseRepair.previousText,
+        };
+        text = phraseRepair.currentText;
+        if (!text) continue;
       }
     }
     if (closeToPrevious) {
