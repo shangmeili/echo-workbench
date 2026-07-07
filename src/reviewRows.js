@@ -1,17 +1,24 @@
 import { mergeShortAdjacentAsrRows, repairAsrTimeline, splitTranscriptIntoSentences, transcriptWeight } from "./asrRows.js";
 
 export function normalizeReviewRows(rows = []) {
-  return rows.map((row, index) => ({
-    id: row.id || `row-${Date.now()}-${index}`,
-    start: Number(row.start) || 0,
-    end: Number(row.end) || Number(row.start) || 0,
-    speaker: row.speaker || "未标注",
-    text: row.text || "",
-    translation: row.translation || "",
-    ...row,
-    originalText: row.originalText ?? row.text ?? "",
-    reviewStatus: row.reviewStatus || "pending",
-  }));
+  return rows.map((row, index) => {
+    const start = Number(row?.start);
+    const end = Number(row?.end);
+    const normalizedStart = Number.isFinite(start) ? start : 0;
+    const normalizedEnd = Number.isFinite(end) ? end : normalizedStart;
+    const text = row?.text || "";
+    return {
+      ...row,
+      id: row?.id || `row-${Date.now()}-${index}`,
+      start: normalizedStart,
+      end: normalizedEnd,
+      speaker: row?.speaker || "未标注",
+      text,
+      translation: row?.translation || "",
+      originalText: row?.originalText ?? text,
+      reviewStatus: row?.reviewStatus || "pending",
+    };
+  });
 }
 
 function subtitleReadableLength(value) {
@@ -107,6 +114,23 @@ export function repairReviewStructure(inputRows = []) {
     mergedRowCount,
     rows: normalizeReviewRows(repairedRows),
   };
+}
+
+export function repairReviewTimelinePreservingEmpty(inputRows = []) {
+  const normalizedRows = normalizeReviewRows(inputRows);
+  let previousEnd = 0;
+  return normalizedRows.map((row, index) => {
+    let start = Number.isFinite(Number(row.start)) ? Number(row.start) : previousEnd;
+    let end = Number.isFinite(Number(row.end)) ? Number(row.end) : start + 0.35;
+    if (index > 0 && start < previousEnd) {
+      start = previousEnd;
+    }
+    if (end <= start) {
+      end = start + 0.35;
+    }
+    previousEnd = end;
+    return { ...row, start, end };
+  });
 }
 
 export function repairReviewStructurePreservingEmpty(inputRows = []) {

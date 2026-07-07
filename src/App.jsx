@@ -45,7 +45,7 @@ import { getAsrLanguageCode, getAsrLanguageCompatibilityWarning } from "./asrLan
 import { asrProviderPresets, defaultAsrProvider } from "./asrPresets.js";
 import { buildTranslationMessages, formatTermReference, stripWrappingCodeFence } from "./modelText.js";
 import { getCorrectedTextValue, getTranslationValue, parseJsonArrayFromModelText } from "./modelResponse.js";
-import { getSubtitleQualityHints, hasTimingExportIssue, normalizeReviewRows, repairReviewStructure, repairReviewStructurePreservingEmpty } from "./reviewRows.js";
+import { getSubtitleQualityHints, hasTimingExportIssue, normalizeReviewRows, repairReviewStructure, repairReviewStructurePreservingEmpty, repairReviewTimelinePreservingEmpty } from "./reviewRows.js";
 import { parseSubtitle, parseTimestamp } from "./subtitleImport.js";
 import { exportRows, formatClock, validateExportRows } from "./subtitleExport.js";
 import { defaultWorkspaceState, workspaceDefaultsForFeature } from "./workspaceDefaults.js";
@@ -1592,10 +1592,11 @@ function WorkbenchView({ activeTool, onBackHome, rows, setRows, media, setMedia,
   });
 
   const restoreEditSnapshot = (snapshot) => {
-    setRows(snapshot.rows.map((row) => ({ ...row })));
+    const restoredRows = repairReviewTimelinePreservingEmpty(snapshot.rows.map((row) => ({ ...row })));
+    setRows(restoredRows);
     setMedia(cloneMediaState(snapshot.media));
     setWorkspaceState({ ...defaultWorkspaceState, ...snapshot.workspaceState });
-    setSelectedRowId(snapshot.selectedRowId || snapshot.rows[0]?.id || "");
+    setSelectedRowId(restoredRows.some((row) => row.id === snapshot.selectedRowId) ? snapshot.selectedRowId : restoredRows[0]?.id || "");
     textEditSnapshotRef.current = null;
   };
 

@@ -4,7 +4,7 @@ import {
   splitTranscriptIntoSentences,
   transcriptWeight,
 } from "../src/asrRows.js";
-import { repairReviewStructure, repairReviewStructurePreservingEmpty } from "../src/reviewRows.js";
+import { normalizeReviewRows, repairReviewStructure, repairReviewStructurePreservingEmpty, repairReviewTimelinePreservingEmpty } from "../src/reviewRows.js";
 import { parseSubtitle } from "../src/subtitleImport.js";
 
 function assertCleanTimeline(rows, label) {
@@ -60,6 +60,23 @@ const overlappingSegmentRows = normalizeLikeWorkbench(rowsFromAsrResult({
   ],
 }, 300));
 assertWorkbenchQuality(overlappingSegmentRows, "overlapping ASR segment repair");
+
+const normalizedStringTimes = normalizeReviewRows([
+  { id: "string-time", start: "1.25", end: "2.5", speaker: "", text: "字符串时间也要规范化。", translation: "" },
+]);
+assert.equal(normalizedStringTimes[0].start, 1.25);
+assert.equal(normalizedStringTimes[0].end, 2.5);
+assert.equal(normalizedStringTimes[0].speaker, "未标注");
+
+const snapshotTimelineRepair = repairReviewTimelinePreservingEmpty([
+  { id: "a", start: "0", end: "2", speaker: "未标注", text: "旧快照第一条。", translation: "" },
+  { id: "b", start: "1.5", end: "3", speaker: "未标注", text: "旧快照第二条。", translation: "" },
+  { id: "empty", start: "3", end: "3", speaker: "未标注", text: "", translation: "" },
+  { id: "c", start: "2.7", end: "5", speaker: "未标注", text: "空行后的旧快照。", translation: "" },
+]);
+assert.equal(snapshotTimelineRepair[2].id, "empty", "timeline repair should preserve explicit empty rows");
+assert.equal(snapshotTimelineRepair[2].text, "");
+assertCleanTimeline(snapshotTimelineRepair.filter((row) => row.text), "snapshot timeline repair");
 
 const longChineseRows = normalizeLikeWorkbench(rowsFromAsrResult({
   segments: [{
