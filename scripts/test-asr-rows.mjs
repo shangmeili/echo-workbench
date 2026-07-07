@@ -136,6 +136,16 @@ assert.deepEqual(
   ["Previously on The Vampire Diaries", "You left your son"],
 );
 
+assert.deepEqual(
+  splitTranscriptIntoSentences("今天我们讨论一下模型配置和转写服务为什么开始转写之后没有结果首先需要确认音频是否上传成功然后检查服务返回的时间码是不是正常"),
+  [
+    "今天我们讨论一下模型配置和转写服务",
+    "为什么开始转写之后没有结果",
+    "首先需要确认音频是否上传成功",
+    "然后检查服务返回的时间码是不是正常",
+  ],
+);
+
 assert.ok(
   splitTranscriptIntoSentences("this is a long english transcription result without punctuation and it should be split into readable subtitle rows for proofreading")
     .every((row) => !/\b(?:and|or|but|that|which|who|to|of|for|in|on|at|with|from|into|as|by)$/i.test(row)),
@@ -416,6 +426,21 @@ assert.match(phraseSpacedRows.map((row) => row.text).join("|"), /之前在《鬼
 assert.match(phraseSpacedRows.map((row) => row.text).join("|"), /如果 Meg 和 Elizabeth 都死了/);
 assert.ok(phraseSpacedRows.some((row) => row.text === "你会想要活着吗"));
 assert.ok(phraseSpacedRows.some((row) => row.text === "我希望活着"));
+
+const englishDialogueRows = rowsFromAsrResult({
+  text: "Previously on The Vampire Diaries You left your son You abandoned your family I was ashamed I had to get out It is beautiful",
+}, 12);
+assert.deepEqual(
+  englishDialogueRows.map((row) => row.text),
+  [
+    "Previously on The Vampire Diaries",
+    "You left your son",
+    "You abandoned your family",
+    "I was ashamed",
+    "I had to get out",
+    "It is beautiful",
+  ],
+);
 
 const unpunctuatedDialogueRows = rowsFromAsrResult({
   segments: [{

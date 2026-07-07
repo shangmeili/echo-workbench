@@ -125,6 +125,22 @@ assert.deepEqual(
   ],
 );
 
+const realisticEnglishDialogueRows = normalizeLikeWorkbench(rowsFromAsrResult({
+  text: "Previously on The Vampire Diaries You left your son You abandoned your family I was ashamed I had to get out It is beautiful",
+}, 12));
+assertWorkbenchQuality(realisticEnglishDialogueRows, "realistic English dialogue ASR row repair");
+assert.deepEqual(
+  realisticEnglishDialogueRows.map((row) => row.text),
+  [
+    "Previously on The Vampire Diaries",
+    "You left your son",
+    "You abandoned your family",
+    "I was ashamed",
+    "I had to get out",
+    "It is beautiful",
+  ],
+);
+
 const compressedChineseRows = normalizeLikeWorkbench(rowsFromAsrResult({
   segments: [{
     start: 0,

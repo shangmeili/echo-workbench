@@ -24,7 +24,7 @@ export function splitTranscriptIntoSentences(text) {
 
 const phraseBreakBeforePatterns = [
   "然后", "所以", "但是", "不过", "可是", "因为", "如果", "否则", "虽然", "只是",
-  "同时", "并且", "以及", "为了", "接着", "另外", "最后",
+  "同时", "并且", "以及", "为了", "接着", "另外", "最后", "首先", "为什么",
   "需要", "应该", "可以", "可能", "其实", "就是", "就像", "那么", "总之", "换句话说",
   "好的", "而是", "而不是", "也要", "系统", "这部分", "源语言", "目标语言", "翻译", "校对窗口", "按钮",
   "是的", "不是",
@@ -36,7 +36,7 @@ const phraseBreakBeforePatterns = [
 
 const phraseStrongBreakBeforePatterns = new Set([
   "然后", "所以", "但是", "不过", "可是", "因为", "如果", "否则", "虽然", "只是",
-  "同时", "并且", "以及", "为了", "接着", "另外", "最后",
+  "同时", "并且", "以及", "为了", "接着", "另外", "最后", "首先", "为什么",
   "需要", "应该", "可以", "可能", "其实", "就是", "就像", "那么", "总之", "换句话说",
   "好的", "而是", "而不是", "也要", "系统", "这部分", "源语言", "目标语言", "翻译", "校对窗口", "按钮",
   "是的", "不是", "你会", "我会", "我知道", "我觉得", "我以为", "我想", "我要", "我不", "我希望",
@@ -54,11 +54,11 @@ const protectedCjkSplitPairs = new Set([
 ]);
 
 function startsWithPattern(text, patterns) {
-  return patterns.find((pattern) => String(text || "").startsWith(pattern)) || "";
+  return Array.from(patterns).find((pattern) => String(text || "").startsWith(pattern)) || "";
 }
 
 function endsWithPattern(text, patterns) {
-  return patterns.find((pattern) => String(text || "").endsWith(pattern)) || "";
+  return Array.from(patterns).find((pattern) => String(text || "").endsWith(pattern)) || "";
 }
 
 function isProtectedCjkPatternBoundary(value, index, pattern) {
@@ -819,6 +819,21 @@ function isShortFragment(row) {
   return rowDuration(row) < 1.05 || units <= 4;
 }
 
+function startsLikelyNewSubtitleClause(previous, current) {
+  const previousText = normalizeAsrText(previous?.text || "");
+  const currentText = normalizeAsrText(current?.text || "");
+  if (!previousText || !currentText || transcriptWeight(previousText) < 3) return false;
+  if (isLatinText(previousText) && isLatinText(currentText)) {
+    const firstWord = cleanEnglishWord(currentText.split(/\s+/)[0]);
+    return englishSentenceStartWords.has(firstWord) && transcriptWeight(currentText) >= 3;
+  }
+  if (/[\u4e00-\u9fa5]/.test(currentText)) {
+    const breakBefore = startsWithPattern(currentText, phraseStrongBreakBeforePatterns);
+    return Boolean(breakBefore && transcriptWeight(currentText) >= 3);
+  }
+  return false;
+}
+
 function joinAdjacentAsrText(left, right) {
   const previous = normalizeAsrText(left || "");
   const current = normalizeAsrText(right || "");
@@ -852,6 +867,7 @@ export function mergeShortAdjacentAsrRows(rows, options = {}) {
       && gap <= maxGapSeconds
       && combinedDuration <= maxCombinedDuration
       && !isSentenceClosed(previous.text)
+      && !startsLikelyNewSubtitleClause(previous, current)
       && transcriptWeight(combinedText) <= maxMergedUnits(combinedText)
       && (isShortFragment(previous) || isShortFragment(current));
 
