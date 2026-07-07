@@ -488,6 +488,7 @@ export function mergeShortAdjacentAsrRows(rows, options = {}) {
       && gap >= -0.05
       && gap <= maxGapSeconds
       && combinedDuration <= maxCombinedDuration
+      && !isSentenceClosed(previous.text)
       && transcriptWeight(combinedText) <= maxMergedUnits(combinedText)
       && (isShortFragment(previous) || isShortFragment(current));
 

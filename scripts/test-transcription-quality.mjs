@@ -1,11 +1,11 @@
 import assert from "node:assert/strict";
 import {
-  mergeShortAdjacentAsrRows,
-  repairAsrTimeline,
   rowsFromAsrResult,
   splitTranscriptIntoSentences,
   transcriptWeight,
 } from "../src/asrRows.js";
+import { repairReviewStructure } from "../src/reviewRows.js";
+import { parseSubtitle } from "../src/subtitleImport.js";
 
 function assertCleanTimeline(rows, label) {
   assert.ok(rows.length > 0, `${label}: should produce review rows`);
@@ -34,10 +34,7 @@ function assertReadableRows(rows, label) {
 }
 
 function assertNoMergeableFragments(rows, label) {
-  const merged = mergeShortAdjacentAsrRows(rows, {
-    maxGapSeconds: 0.85,
-    maxCombinedDuration: 5.8,
-  });
+  const merged = repairReviewStructure(rows).rows;
   assert.equal(
     merged.length,
     rows.length,
@@ -52,10 +49,7 @@ function assertWorkbenchQuality(rows, label) {
 }
 
 function normalizeLikeWorkbench(rows) {
-  return repairAsrTimeline(mergeShortAdjacentAsrRows(repairAsrTimeline(rows), {
-    maxGapSeconds: 0.85,
-    maxCombinedDuration: 5.8,
-  }));
+  return repairReviewStructure(rows).rows;
 }
 
 const overlappingSegmentRows = normalizeLikeWorkbench(rowsFromAsrResult({
@@ -110,6 +104,17 @@ assert.deepEqual(
   ["我以为我们只能给 Kade", "最糟糕的。"],
 );
 assertWorkbenchQuality(fragmentRows, "short fragment repair");
+
+const importedSubtitleRows = normalizeLikeWorkbench(parseSubtitle([
+  "1",
+  "00:00:01,000 --> 00:00:04,000",
+  "第一条内容。",
+  "",
+  "2",
+  "00:00:03,500 --> 00:00:08,000",
+  "第二条内容很长需要系统自动处理不要把时间重叠和断句问题交给用户。",
+].join("\n")));
+assertWorkbenchQuality(importedSubtitleRows, "subtitle import auto repair");
 
 assert.deepEqual(
   splitTranscriptIntoSentences("The U.S. Army reviewed the audio. next sentence starts lowercase."),

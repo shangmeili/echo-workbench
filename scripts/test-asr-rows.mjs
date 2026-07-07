@@ -295,6 +295,14 @@ assert.deepEqual(
   ["Yes.", "I understand."],
 );
 
+assert.deepEqual(
+  mergeShortAdjacentAsrRows([
+    { id: "a", start: 0, end: 1.8, speaker: "S1", text: "第一条内容。", translation: "" },
+    { id: "b", start: 1.85, end: 2.6, speaker: "S1", text: "第二条开头", translation: "" },
+  ]).map((row) => row.text),
+  ["第一条内容。", "第二条开头"],
+);
+
 assert.match(
   detectTranscriptionQualityIssue([
     { text: "This transcript is clearly English and not Chinese." },
