@@ -3260,12 +3260,13 @@ ${JSON.stringify(chunk.map((row) => ({ id: row.id, start: row.start, end: row.en
         ? splitSegmentTextAt(sourceRow.originalText, textSelectionRef.current.index)
         : null) || splitSegmentText(sourceRow.originalText) || textParts
       : textParts;
+    const nextRowId = `row-${Date.now()}-${Math.random().toString(16).slice(2)}`;
     const nextRows = [
       ...rows.slice(0, index),
       { ...sourceRow, text: textParts.before, originalText: originalTextParts.before, end: splitTime, translation: "", reviewStatus: "pending" },
       {
         ...sourceRow,
-        id: `row-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+        id: nextRowId,
         start: splitTime,
         end,
         text: textParts.after,
@@ -3276,12 +3277,15 @@ ${JSON.stringify(chunk.map((row) => ({ id: row.id, start: row.start, end: row.en
       ...rows.slice(index + 1),
     ];
     pushUndoSnapshot("拆分段落");
-    const readableRepair = repairReadableReviewRows(repairAsrTimeline(nextRows));
-    const repairedRows = repairAsrTimeline(readableRepair.rows);
-    setRows(normalizeReviewRows(repairedRows));
-    markRowsEdited(repairedRows.length);
-    const splitText = readableRepair.splitRowCount ? `系统已继续拆分 ${readableRepair.splitRowCount} 条过长段落。` : "";
-    setMessage(`已拆分当前段落。译文已清空，请重新翻译或手动校对。${splitText}`);
+    const repairResult = repairReviewStructureUnlessEmpty(nextRows, {
+      ...structureRepairOptions,
+      preserveBoundaries: [[sourceRow.id, nextRowId]],
+    });
+    setRows(repairResult.rows);
+    markRowsEdited(repairResult.rows.length);
+    const mergeText = repairResult.mergedRowCount ? `系统已自动合并 ${repairResult.mergedRowCount} 条短碎片。` : "";
+    const splitText = repairResult.splitRowCount ? `系统已继续拆分 ${repairResult.splitRowCount} 条过长段落。` : "";
+    setMessage(`已拆分当前段落。译文已清空，请重新翻译或手动校对。${mergeText}${splitText}`);
   };
 
   const mergeWithNextRow = (rowId) => {

@@ -134,8 +134,13 @@ function hasTimingPressure(row, nextRow = null) {
   return hints.includes("时长过短") || hints.includes("阅读过快");
 }
 
-function mergeTimingPressureAdjacentRows(inputRows = []) {
+function preservedBoundarySet(options = {}) {
+  return new Set((options.preserveBoundaries || []).map(([left, right]) => `${left}\u0000${right}`));
+}
+
+function mergeTimingPressureAdjacentRows(inputRows = [], options = {}) {
   const rows = normalizeReviewRows(inputRows);
+  const preserveBoundaries = preservedBoundarySet(options);
   const result = [];
   for (const row of rows) {
     const previous = result.at(-1);
@@ -145,8 +150,10 @@ function mergeTimingPressureAdjacentRows(inputRows = []) {
     }
     const gap = Number(row.start) - Number(previous.end);
     const combinedText = joinReviewText(previous.text, row.text);
+    const preserveBoundary = preserveBoundaries.has(`${previous.id}\u0000${row.id}`);
     const shouldMerge = hasTimingPressure(previous, row)
       && gap <= 0.35
+      && !preserveBoundary
       && !reviewSentenceClosed(previous.text)
       && splitTranscriptIntoSentences(combinedText).length <= 1
       && String(previous.speaker || "未标注") === String(row.speaker || "未标注");
@@ -215,13 +222,14 @@ function repairTimingPressureRows(inputRows = []) {
 export function repairReviewStructure(inputRows = [], options = {}) {
   const boundedEnd = Number(options.maxEnd) || 0;
   const timedRows = repairAsrTimeline(dedupeAdjacentAsrRows(inputRows));
-  const pressureMergedRows = mergeTimingPressureAdjacentRows(timedRows);
-  const mergedRows = mergeShortAdjacentAsrRows(pressureMergedRows, { maxGapSeconds: 0.85, maxCombinedDuration: 5.8 });
+  const mergeOptions = { preserveBoundaries: options.preserveBoundaries || [] };
+  const pressureMergedRows = mergeTimingPressureAdjacentRows(timedRows, mergeOptions);
+  const mergedRows = mergeShortAdjacentAsrRows(pressureMergedRows, { maxGapSeconds: 0.85, maxCombinedDuration: 5.8, ...mergeOptions });
   const readableRepair = repairReadableReviewRows(repairAsrTimeline(mergedRows));
   const timedReadableRows = boundedEnd > 0
     ? repairAsrTimeline(readableRepair.rows)
     : repairTimingPressureRows(readableRepair.rows);
-  const finalMergedRows = mergeShortAdjacentAsrRows(timedReadableRows, { maxGapSeconds: 0.85, maxCombinedDuration: 5.8 });
+  const finalMergedRows = mergeShortAdjacentAsrRows(timedReadableRows, { maxGapSeconds: 0.85, maxCombinedDuration: 5.8, ...mergeOptions });
   const finalReadableRepair = repairReadableReviewRows(finalMergedRows);
   const timelineRows = repairAsrTimeline(finalReadableRepair.rows);
   const pressureRows = repairAsrTimeline(repairTimingPressureRows(finalReadableRepair.rows));

@@ -852,6 +852,7 @@ function joinAdjacentAsrText(left, right) {
 export function mergeShortAdjacentAsrRows(rows, options = {}) {
   const maxGapSeconds = options.maxGapSeconds ?? 0.65;
   const maxCombinedDuration = options.maxCombinedDuration ?? 5.5;
+  const preserveBoundaries = new Set((options.preserveBoundaries || []).map(([left, right]) => `${left}\u0000${right}`));
   const result = [];
 
   for (const row of Array.isArray(rows) ? rows : []) {
@@ -865,12 +866,14 @@ export function mergeShortAdjacentAsrRows(rows, options = {}) {
     }
 
     const gap = finiteNumber(current.start, 0) - finiteNumber(previous.end, 0);
+    const preserveBoundary = preserveBoundaries.has(`${previous.id}\u0000${current.id}`);
     const combinedText = joinAdjacentAsrText(previous.text, current.text);
     const combinedDuration = Math.max(finiteNumber(previous.end, 0), finiteNumber(current.end, 0)) - finiteNumber(previous.start, 0);
     const shouldMerge = sameSpeaker(previous, current)
       && gap >= -0.05
       && gap <= maxGapSeconds
       && combinedDuration <= maxCombinedDuration
+      && !preserveBoundary
       && !isSentenceClosed(previous.text)
       && !startsLikelyNewSubtitleClause(previous, current)
       && transcriptWeight(combinedText) <= maxMergedUnits(combinedText)

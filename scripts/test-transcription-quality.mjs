@@ -122,6 +122,16 @@ assert.ok(
   `merged fragment readability repair should keep semantic phrases intact: ${mergedThenReadableRows.map((row) => row.text).join(" | ")}`,
 );
 
+const manualSplitBoundaryRepair = repairReviewStructure([
+  { id: "manual-left", start: 0, end: 0.4, speaker: "未标注", text: "带时间", translation: "" },
+  { id: "manual-right", start: 0.4, end: 1.4, speaker: "未标注", text: "范围的开场", translation: "" },
+], { preserveBoundaries: [["manual-left", "manual-right"]] }).rows;
+assert.deepEqual(
+  manualSplitBoundaryRepair.map((row) => row.text),
+  ["带时间", "范围的开场"],
+  "manual split boundaries should not be immediately merged back by automatic structure repair",
+);
+
 const realisticProductSpeechRows = normalizeLikeWorkbench(rowsFromAsrResult({
   segments: [{
     start: 0,
