@@ -6,7 +6,7 @@ export function splitTranscriptIntoSentences(text) {
     .trim();
   if (!clean) return [];
   const chunks = mergeAbbreviationChunks(clean
-    .split(/\n+|(?<=[。！？!?；;])\s*|(?<=[A-Za-z]\.)\s+(?=[A-Z"“'(\[])/)
+    .split(/\n+|(?<=[。！？!?；;])\s*|(?<=[A-Za-z]\.)\s+(?=[A-Za-z"“'(\[])/)
     .map((item) => item.trim())
     .filter(Boolean));
   const rows = chunks.flatMap((chunk) => splitLongSentenceChunk(chunk));

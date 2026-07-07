@@ -27,6 +27,11 @@ assert.deepEqual(
 );
 
 assert.deepEqual(
+  splitTranscriptIntoSentences("yes. maybe you shouldn't be here."),
+  ["yes.", "maybe you shouldn't be here."],
+);
+
+assert.deepEqual(
   splitTranscriptIntoSentences("Dr. Smith reviewed the audio. The result is usable."),
   ["Dr. Smith reviewed the audio.", "The result is usable."],
 );
@@ -39,6 +44,11 @@ assert.deepEqual(
 assert.deepEqual(
   splitTranscriptIntoSentences("Use e.g. speaker names and product names. The subtitle stays readable."),
   ["Use e.g. speaker names and product names.", "The subtitle stays readable."],
+);
+
+assert.deepEqual(
+  splitTranscriptIntoSentences("Use e.g. speaker names and product names. next sentence starts lowercase."),
+  ["Use e.g. speaker names and product names.", "next sentence starts lowercase."],
 );
 
 assert.equal(joinAsrTokens([

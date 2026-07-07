@@ -753,6 +753,13 @@ function getSubtitleQualityHints(row, nextRow = null) {
   return hints;
 }
 
+function hasTimingExportIssue(rows = []) {
+  return rows.some((row, index) => {
+    const hints = getSubtitleQualityHints(row, rows[index + 1]);
+    return hints.includes("时间无效") || hints.includes("时间重叠");
+  });
+}
+
 function splitReviewRowByReadableText(row) {
   const textParts = splitTranscriptIntoSentences(row?.text || "");
   if (textParts.length <= 1) return [row];
@@ -2037,10 +2044,9 @@ function WorkbenchView({ activeTool, onBackHome, rows, setRows, media, setMedia,
     return hints.includes("时间无效") || hints.includes("时间重叠");
   });
   const timingExportIssueCount = timingExportIssueRows.length;
-  const timingExportIssueIds = new Set(timingExportIssueRows.map((row) => row.id));
-  const exportBlockerCount = rows.filter((row) => !String(row.text || "").trim() || timingExportIssueIds.has(row.id)).length;
-  const primaryExportLabel = exportBlockerCount ? `修复 ${exportBlockerCount} 条后导出` : basePrimaryExportLabel;
-  const primaryExportTitle = exportBlockerCount ? "点击定位第一条导出前必须修复的问题" : basePrimaryExportLabel;
+  const exportBlockerCount = emptyTextCount;
+  const primaryExportLabel = exportBlockerCount ? `补齐 ${exportBlockerCount} 条后导出` : basePrimaryExportLabel;
+  const primaryExportTitle = exportBlockerCount ? "点击定位第一条缺少原文的段落" : basePrimaryExportLabel;
   const activeQualityHints = activeReviewRow ? qualityHintMap.get(activeReviewRow.id) || [] : [];
   const showReviewPagination = rows.length > REVIEW_PAGE_SIZE;
   const isLoopingActiveSegment = Boolean(activeReviewRow?.id && segmentLoopRowId === activeReviewRow.id);
@@ -2227,7 +2233,7 @@ function WorkbenchView({ activeTool, onBackHome, rows, setRows, media, setMedia,
     const hints = qualityHintMap.get(target.id) || [];
     setSelectedRowId(target.id);
     if (showMessage) {
-      setMessage(`还有 ${timingExportIssueCount} 条时间轴问题，已定位到第 ${targetIndex + 1} 条：${hints.filter((hint) => hint === "时间无效" || hint === "时间重叠").join("、")}。请修正后再导出。`);
+      setMessage(`检测到 ${timingExportIssueCount} 条时间轴问题，导出时会自动修复：${hints.filter((hint) => hint === "时间无效" || hint === "时间重叠").join("、")}。`);
     }
     const escapeSelector = globalThis.CSS?.escape || ((value) => String(value).replace(/"/g, '\\"'));
     window.setTimeout(() => {
@@ -2294,7 +2300,7 @@ function WorkbenchView({ activeTool, onBackHome, rows, setRows, media, setMedia,
     const repairResult = repairReadableReviewRows(rows);
     if (repairResult.addedRowCount <= 0) {
       jumpToNextQualityIssue();
-      setMessage("当前长段缺少可识别断点，已定位到第一条质量提示，可手动拆分。");
+      setMessage("当前长段缺少稳定断点，已定位到对应段落，可在校对区直接编辑。");
       return;
     }
     pushUndoSnapshot("自动拆分长段");
@@ -3357,20 +3363,7 @@ ${JSON.stringify(chunk.map((row) => ({ id: row.id, start: row.start, end: row.en
     setMessage("已删除段落。可使用撤销恢复。");
   };
 
-  const handleExport = (filename, content, label, mode = currentExportMode) => {
-    if (emptyTextCount > 0) {
-      jumpToFirstEmptyText({ showMessage: true });
-      return;
-    }
-    if (timingExportIssueCount > 0) {
-      jumpToFirstTimingExportIssue({ showMessage: true });
-      return;
-    }
-    if ((mode === "target" || mode === "bilingual") && !translationComplete) {
-      setMessage(`还有 ${missingTranslationCount} 条没有译文，无法导出${mode === "target" ? "译文" : "双语"}文件。请先翻译或手动补齐译文。`);
-      jumpToFirstMissingTranslation();
-      return;
-    }
+  const handleExport = (filename, content, label) => {
     try {
       downloadText(filename, content);
       updateActiveRecent?.({
@@ -3390,15 +3383,23 @@ ${JSON.stringify(chunk.map((row) => ({ id: row.id, start: row.start, end: row.en
   };
 
   const exportCurrentRows = (format) => {
+    let rowsToExport = rows;
+    if (hasTimingExportIssue(rowsToExport)) {
+      const repairedRows = normalizeReviewRows(repairAsrTimeline(rowsToExport));
+      if (hasTimingExportIssue(repairedRows)) {
+        setMessage("导出失败：系统未能自动修复时间轴，请重新生成转写或导入有效字幕文件。");
+        return;
+      }
+      pushUndoSnapshot("自动修复时间轴");
+      rowsToExport = repairedRows;
+      setRows(repairedRows);
+      markRowsEdited(repairedRows.length);
+    }
     try {
-      validateExportRows(rows, currentExportMode);
+      validateExportRows(rowsToExport, currentExportMode);
     } catch (error) {
       if (emptyTextCount > 0) {
         jumpToFirstEmptyText({ showMessage: true });
-        return;
-      }
-      if (timingExportIssueCount > 0) {
-        jumpToFirstTimingExportIssue({ showMessage: true });
         return;
       }
       if ((currentExportMode === "target" || currentExportMode === "bilingual") && !translationComplete) {
@@ -3409,7 +3410,7 @@ ${JSON.stringify(chunk.map((row) => ({ id: row.id, start: row.start, end: row.en
       setMessage(`导出失败：${error.message || "导出内容不完整"}`);
       return;
     }
-    handleExport(exportFilename(format, currentExportMode), exportRows(rows, format, currentExportMode, exportOptions), format.toUpperCase(), currentExportMode);
+    handleExport(exportFilename(format, currentExportMode), exportRows(rowsToExport, format, currentExportMode, exportOptions), format.toUpperCase());
   };
 
   const handlePlainExport = (filename, content, label) => {
