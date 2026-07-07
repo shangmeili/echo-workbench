@@ -2005,13 +2005,6 @@ function WorkbenchView({ activeTool, onBackHome, rows, setRows, media, setMedia,
     });
     return map;
   }, [rows]);
-  const qualityIssueRows = rows.filter((row) => qualityHintMap.has(row.id));
-  const longSubtitleIssueRows = rows.filter((row) => (qualityHintMap.get(row.id) || []).includes("单条过长"));
-  const timingExportIssueRows = rows.filter((row) => {
-    const hints = qualityHintMap.get(row.id) || [];
-    return hints.includes("时间无效") || hints.includes("时间重叠");
-  });
-  const timingExportIssueCount = timingExportIssueRows.length;
   const exportBlockerCount = emptyTextCount;
   const primaryExportLabel = exportBlockerCount ? `补齐 ${exportBlockerCount} 条后导出` : basePrimaryExportLabel;
   const primaryExportTitle = exportBlockerCount ? "点击定位第一条缺少原文的段落" : basePrimaryExportLabel;
@@ -2191,27 +2184,6 @@ function WorkbenchView({ activeTool, onBackHome, rows, setRows, media, setMedia,
     return true;
   };
 
-  const jumpToFirstTimingExportIssue = ({ showMessage = false } = {}) => {
-    const targetIndex = rows.findIndex((row) => {
-      const hints = qualityHintMap.get(row.id) || [];
-      return hints.includes("时间无效") || hints.includes("时间重叠");
-    });
-    const target = rows[targetIndex];
-    if (!target) return false;
-    const hints = qualityHintMap.get(target.id) || [];
-    setSelectedRowId(target.id);
-    if (showMessage) {
-      setMessage(`系统会在导出前自动整理 ${timingExportIssueCount} 条时间轴异常：${hints.filter((hint) => hint === "时间无效" || hint === "时间重叠").join("、")}。`);
-    }
-    const escapeSelector = globalThis.CSS?.escape || ((value) => String(value).replace(/"/g, '\\"'));
-    window.setTimeout(() => {
-      const rowElement = subtitleTableRef.current?.querySelector(`[data-row-id="${escapeSelector(target.id)}"]`);
-      rowElement?.scrollIntoView({ block: "center", behavior: "smooth" });
-      document.querySelector("[aria-label='当前段落开始时间']")?.focus?.();
-    }, 0);
-    return true;
-  };
-
   const requestExportMode = (mode) => {
     if (mode !== "source" && !translationExportAvailable) {
       setExportMode("source");
@@ -2233,10 +2205,6 @@ function WorkbenchView({ activeTool, onBackHome, rows, setRows, media, setMedia,
       jumpToFirstEmptyText({ showMessage: true });
       return;
     }
-    if (timingExportIssueCount > 0) {
-      jumpToFirstTimingExportIssue({ showMessage: true });
-      return;
-    }
     if (needsTranslationAttention) {
       jumpToFirstMissingTranslation({ showMessage: true });
     }
@@ -2252,31 +2220,6 @@ function WorkbenchView({ activeTool, onBackHome, rows, setRows, media, setMedia,
       ? ".current-segment-card .subtitle-translation-textarea"
       : ".current-segment-card .subtitle-source-textarea";
     window.setTimeout(() => document.querySelector(selector)?.focus?.(), 0);
-  };
-
-  const jumpToNextQualityIssue = () => {
-    if (!qualityIssueRows.length) return;
-    const currentIndex = qualityIssueRows.findIndex((row) => row.id === activeReviewRow?.id);
-    const nextRow = qualityIssueRows[(currentIndex + 1 + qualityIssueRows.length) % qualityIssueRows.length];
-    selectReviewRow(nextRow, hasMediaPlayback);
-    const hints = qualityHintMap.get(nextRow.id) || [];
-    setMessage(`已定位到质量提示：${hints.join("、")}。`);
-  };
-
-  const repairLongSubtitleRows = () => {
-    if (!longSubtitleIssueRows.length) return;
-    const repairResult = repairReviewStructureUnlessEmpty(rows, structureRepairOptions);
-    if (repairResult.addedRowCount <= 0) {
-      jumpToNextQualityIssue();
-      setMessage("当前长段缺少稳定断点，已定位到对应段落，可在校对区直接编辑。");
-      return;
-    }
-    pushUndoSnapshot("自动拆分长段");
-    setRows(repairResult.rows);
-    markRowsEdited(repairResult.rows.length);
-    const firstSplit = repairResult.rows.find((row) => !rows.some((oldRow) => oldRow.id === row.id && oldRow.text === row.text)) || repairResult.rows[0];
-    setSelectedRowId(firstSplit?.id || "");
-    setMessage(`已拆分 ${repairResult.splitRowCount} 条过长段落，新增 ${repairResult.addedRowCount} 条可校对段落。译文已按可确认对应关系保留，无法对应的译文已清空。`);
   };
 
   const handleSubtitleSearchKeyDown = (event) => {
@@ -4282,16 +4225,6 @@ ${JSON.stringify(chunk.map((row) => ({ id: row.id, start: row.start, end: row.en
                   >
                     <Copy size={15} /><span>复制全文</span>
                   </button>
-                  {qualityIssueRows.length > 0 && (
-                    <button className="quality-jump-button" type="button" onClick={jumpToNextQualityIssue} aria-label="跳到下一处质量提示" title="跳到下一处质量提示">
-                      下一处提示
-                    </button>
-                  )}
-                  {longSubtitleIssueRows.length > 0 && (
-                    <button className="secondary" type="button" onClick={repairLongSubtitleRows} aria-label={`拆分 ${longSubtitleIssueRows.length} 条过长段落`} title="按标点和可读长度自动拆分过长段落">
-                      拆分长段
-                    </button>
-                  )}
                   {showReviewPagination && (
                     <div className="review-pagination" aria-label="校对列表分页">
                       <span>{reviewPageStart + 1}-{reviewPageEnd} / {rows.length}</span>

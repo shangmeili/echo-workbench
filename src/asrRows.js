@@ -1171,19 +1171,19 @@ export function detectTranscriptionQualityIssue(rows, sourceLanguage, duration =
   const chineseCount = (normalizedText.match(/[\u4e00-\u9fa5]/g) || []).length;
   const latinCount = (normalizedText.match(/[A-Za-z]/g) || []).length;
   if (sourceLanguage === "中文" && normalizedText.length >= 24 && chineseCount / normalizedText.length < 0.18) {
-    return "识别结果与中文源语言不匹配，请复查视频音轨、源语言或转写模型。";
+    return "识别结果与中文源语言不匹配，系统已标记为低可信结果；建议更换源语言或转写服务后重新转写。";
   }
   if (sourceLanguage === "英文" && normalizedText.length >= 24 && latinCount / normalizedText.length < 0.35) {
-    return "识别结果与英文源语言不匹配，请复查视频音轨、源语言或转写模型。";
+    return "识别结果与英文源语言不匹配，系统已标记为低可信结果；建议更换源语言或转写服务后重新转写。";
   }
   const safeDuration = Number(duration) || 0;
   const expectedMinRows = Math.max(2, Math.floor(safeDuration / 45));
   if (safeDuration >= 90 && rows.length < expectedMinRows) {
-    return "长音频返回的分段偏少，请检查音频是否完整，必要时更换转写模型后重试。";
+    return "长音频返回的分段异常偏少，系统已标记为低可信结果；建议重试或更换转写服务。";
   }
   const minimumTextWeight = Math.max(18, safeDuration / 6);
   if (safeDuration >= 60 && transcriptWeight(normalizedText) < minimumTextWeight) {
-    return "长音频返回的文本偏少，请检查音量、音轨完整性、源语言或转写模型。";
+    return "长音频返回的文本异常偏少，系统已标记为低可信结果；建议重试或更换转写服务。";
   }
   return "";
 }

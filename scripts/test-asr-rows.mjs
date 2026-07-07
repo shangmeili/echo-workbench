@@ -631,21 +631,21 @@ assert.match(
   detectTranscriptionQualityIssue([
     { text: "This transcript is clearly English and not Chinese." },
   ], "中文", 20),
-  /中文源语言不匹配/,
+  /中文源语言不匹配，系统已标记为低可信结果/,
 );
 
 assert.match(
   detectTranscriptionQualityIssue([
     { text: "这是一段明显的中文识别结果，不应该被当成英文内容继续处理。" },
   ], "英文", 20),
-  /英文源语言不匹配/,
+  /英文源语言不匹配，系统已标记为低可信结果/,
 );
 
 assert.match(
   detectTranscriptionQualityIssue([
     { text: "只有一条短转写。" },
   ], "中文", 180),
-  /分段偏少/,
+  /分段异常偏少，系统已标记为低可信结果/,
 );
 
 assert.match(
@@ -653,8 +653,17 @@ assert.match(
     { text: "短句。" },
     { text: "还是太短。" },
   ], "中文", 80),
-  /文本偏少/,
+  /文本异常偏少，系统已标记为低可信结果/,
 );
+
+for (const issueText of [
+  detectTranscriptionQualityIssue([{ text: "This transcript is clearly English and not Chinese." }], "中文", 20),
+  detectTranscriptionQualityIssue([{ text: "这是一段明显的中文识别结果，不应该被当成英文内容继续处理。" }], "英文", 20),
+  detectTranscriptionQualityIssue([{ text: "只有一条短转写。" }], "中文", 180),
+  detectTranscriptionQualityIssue([{ text: "短句。" }, { text: "还是太短。" }], "中文", 80),
+]) {
+  assert.doesNotMatch(issueText, /请|用户.*处理|自行|自己/, "quality issue copy should be system-owned instead of asking users to solve service problems");
+}
 
 assert.equal(
   detectTranscriptionQualityIssue([
