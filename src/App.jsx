@@ -39,7 +39,7 @@ import {
   Wand2,
   X,
 } from "lucide-react";
-import { asrResultHasTiming, dedupeAdjacentAsrRows, detectTranscriptionQualityIssue, mergeShortAdjacentAsrRows, rowsFromAsrResult, transcriptWeight } from "./asrRows.js";
+import { asrResultHasTiming, dedupeAdjacentAsrRows, detectTranscriptionQualityIssue, mergeShortAdjacentAsrRows, rowsFromAsrResult, splitTranscriptIntoSentences, transcriptWeight } from "./asrRows.js";
 import { ASR_CHUNK_SECONDS, isAsrReadyAudioFile, isOpenAICompatibleAsr, shouldDecodeMediaForAsr, shouldSubmitOriginalMediaForAsr } from "./asrInputStrategy.js";
 import { getAsrLanguageCode, getAsrLanguageCompatibilityWarning } from "./asrLanguage.js";
 import { asrProviderPresets, defaultAsrProvider } from "./asrPresets.js";
@@ -751,6 +751,57 @@ function getSubtitleQualityHints(row, nextRow = null) {
   if (textLength > subtitleLengthLimit(text)) hints.push("单条过长");
   if (duration > 0 && textLength / duration > 18) hints.push("阅读过快");
   return hints;
+}
+
+function splitReviewRowByReadableText(row) {
+  const textParts = splitTranscriptIntoSentences(row?.text || "");
+  if (textParts.length <= 1) return [row];
+  const start = Number(row.start) || 0;
+  const end = Math.max(start + 0.5, Number(row.end) || start + textParts.length * 1.2);
+  const duration = end - start;
+  const totalWeight = textParts.reduce((sum, item) => sum + transcriptWeight(item), 0) || textParts.length;
+  const originalParts = row.originalText && row.originalText !== row.text ? splitTranscriptIntoSentences(row.originalText) : textParts;
+  const translationParts = row.translation ? splitTranscriptIntoSentences(row.translation) : [];
+  let cursor = start;
+  return textParts.map((part, index) => {
+    const isLast = index === textParts.length - 1;
+    const weight = transcriptWeight(part);
+    const rowDuration = isLast ? end - cursor : Math.max(0.45, duration * (weight / totalWeight));
+    const rowEnd = isLast ? end : Math.min(end - 0.2, cursor + rowDuration);
+    const next = {
+      ...row,
+      id: index === 0 ? row.id : `row-${Date.now()}-${index}-${Math.random().toString(16).slice(2)}`,
+      start: cursor,
+      end: Math.max(cursor + 0.35, rowEnd),
+      text: part,
+      originalText: originalParts.length === textParts.length ? originalParts[index] : part,
+      translation: translationParts.length === textParts.length ? translationParts[index] : "",
+      reviewStatus: "pending",
+    };
+    cursor = next.end;
+    return next;
+  });
+}
+
+function repairReadableReviewRows(inputRows = []) {
+  const normalizedRows = normalizeReviewRows(inputRows);
+  const repairedRows = [];
+  let splitRowCount = 0;
+  normalizedRows.forEach((row, index) => {
+    const hints = getSubtitleQualityHints(row, normalizedRows[index + 1]);
+    if (!hints.includes("单条过长")) {
+      repairedRows.push(row);
+      return;
+    }
+    const parts = splitReviewRowByReadableText(row);
+    if (parts.length > 1) splitRowCount += 1;
+    repairedRows.push(...parts);
+  });
+  return {
+    rows: normalizeReviewRows(repairedRows),
+    splitRowCount,
+    addedRowCount: Math.max(0, repairedRows.length - normalizedRows.length),
+  };
 }
 
 function providerReady(provider, serverStatus = defaultServerStatus) {
@@ -1980,6 +2031,7 @@ function WorkbenchView({ activeTool, onBackHome, rows, setRows, media, setMedia,
     return map;
   }, [rows]);
   const qualityIssueRows = rows.filter((row) => qualityHintMap.has(row.id));
+  const longSubtitleIssueRows = rows.filter((row) => (qualityHintMap.get(row.id) || []).includes("单条过长"));
   const timingExportIssueRows = rows.filter((row) => {
     const hints = qualityHintMap.get(row.id) || [];
     return hints.includes("时间无效") || hints.includes("时间重叠");
@@ -2235,6 +2287,22 @@ function WorkbenchView({ activeTool, onBackHome, rows, setRows, media, setMedia,
     selectReviewRow(nextRow, hasMediaPlayback);
     const hints = qualityHintMap.get(nextRow.id) || [];
     setMessage(`已定位到质量提示：${hints.join("、")}。`);
+  };
+
+  const repairLongSubtitleRows = () => {
+    if (!longSubtitleIssueRows.length) return;
+    const repairResult = repairReadableReviewRows(rows);
+    if (repairResult.addedRowCount <= 0) {
+      jumpToNextQualityIssue();
+      setMessage("当前长段缺少可识别断点，已定位到第一条质量提示，可手动拆分。");
+      return;
+    }
+    pushUndoSnapshot("自动拆分长段");
+    setRows(repairResult.rows);
+    markRowsEdited(repairResult.rows.length);
+    const firstSplit = repairResult.rows.find((row) => !rows.some((oldRow) => oldRow.id === row.id && oldRow.text === row.text)) || repairResult.rows[0];
+    setSelectedRowId(firstSplit?.id || "");
+    setMessage(`已拆分 ${repairResult.splitRowCount} 条过长段落，新增 ${repairResult.addedRowCount} 条可校对段落。译文已按可确认对应关系保留，无法对应的译文已清空。`);
   };
 
   const handleSubtitleSearchKeyDown = (event) => {
@@ -2731,7 +2799,8 @@ ${rawText}`;
           correctionText = `自动校正未完成：${error.message || "文本模型请求失败"}。已保留 ASR 原始结果。`;
         }
       }
-      const reviewRows = normalizeReviewRows(finalRows);
+      const readableRepair = repairReadableReviewRows(finalRows);
+      const reviewRows = readableRepair.rows;
       pushUndoSnapshot("生成转写结果");
       setRows(reviewRows);
       setDraft("");
@@ -2762,8 +2831,9 @@ ${rawText}`;
       const chunkText = asrInputs.length > 1 ? `已分 ${asrInputs.length} 段提交，降低长文件漏识别和超时风险。` : "";
       const dedupeText = dedupeCount ? `已合并 ${dedupeCount} 条重叠重复段落。` : "";
       const qualityIssue = detectTranscriptionQualityIssue(reviewRows, sourceLanguage, asrSource.duration);
+      const readabilityText = readableRepair.splitRowCount ? `已自动拆分 ${readableRepair.splitRowCount} 条过长段落。` : "";
       const qualityText = qualityIssue ? ` ${qualityIssue}` : " 请继续校对时间轴、专有名词和低置信片段。";
-      const successMessage = hasTiming ? `${conversionText}${chunkText}${dedupeText}云端转写完成，已生成 ${reviewRows.length} 条可编辑段落。${correctionText}${qualityText}` : `${conversionText}${chunkText}${dedupeText}云端转写完成，已生成 ${reviewRows.length} 条可编辑段落；当前模型未返回词级时间戳，时间轴已按文本自动分段，请校对。${correctionText}${qualityText}`;
+      const successMessage = hasTiming ? `${conversionText}${chunkText}${dedupeText}${readabilityText}云端转写完成，已生成 ${reviewRows.length} 条可编辑段落。${correctionText}${qualityText}` : `${conversionText}${chunkText}${dedupeText}${readabilityText}云端转写完成，已生成 ${reviewRows.length} 条可编辑段落；当前模型未返回词级时间戳，时间轴已按文本自动分段，请校对。${correctionText}${qualityText}`;
       setMessage(successMessage);
       setWorkbenchTranscriptionStatus({ state: "success", message: successMessage, stage: "生成校对结果" });
       setWorkspaceState((current) => ({ ...current, lastTranscriptionStatus: null }));
@@ -2784,7 +2854,7 @@ ${rawText}`;
   };
 
   const applyImportedRows = (parsed, options = {}) => {
-    const { name = "", source = "file", replaceExisting = rows.length > 0 } = options;
+    const { name = "", source = "file", replaceExisting = rows.length > 0, splitRowCount = 0 } = options;
     const hadRows = rows.length > 0;
     pushUndoSnapshot(source === "manual" ? "导入文本" : "导入字幕/转写文件");
     setRows(parsed);
@@ -2825,9 +2895,10 @@ ${rawText}`;
         tool: activeTool,
       });
     }
+    const splitText = splitRowCount ? `已自动拆分 ${splitRowCount} 条过长段落。` : "";
     setMessage(hadRows
-      ? `已替换当前校对表，导入 ${parsed.length} 条${segmentKind}段落。可使用撤销恢复上一步。`
-      : `已解析 ${parsed.length} 条${segmentKind}段落。`);
+      ? `已替换当前校对表，导入 ${parsed.length} 条${segmentKind}段落。${splitText}可使用撤销恢复上一步。`
+      : `已解析 ${parsed.length} 条${segmentKind}段落。${splitText}`);
   };
 
   const requestImportRows = (parsed, options = {}) => {
@@ -2847,12 +2918,13 @@ ${rawText}`;
     }
     if (!confirmInterruptingWork("导入字幕或转写文件")) return;
     const text = await file.text();
-    const parsed = normalizeReviewRows(parseSubtitle(text));
+    const repairResult = repairReadableReviewRows(parseSubtitle(text));
+    const parsed = repairResult.rows;
     if (!parsed.length) {
       setMessage("没有解析到可导入的字幕或文本内容。");
       return;
     }
-    requestImportRows(parsed, { source: "file", name: file.name });
+    requestImportRows(parsed, { source: "file", name: file.name, splitRowCount: repairResult.splitRowCount });
   };
 
   const importManualText = () => {
@@ -2860,12 +2932,13 @@ ${rawText}`;
       setMessage("请先配置本地工作区，再导入字幕或转写文本。");
       return;
     }
-    const parsed = normalizeReviewRows(parseSubtitle(manualImport));
+    const repairResult = repairReadableReviewRows(parseSubtitle(manualImport));
+    const parsed = repairResult.rows;
     if (!parsed.length) {
       setMessage("请输入可导入的字幕或转写文本。");
       return;
     }
-    requestImportRows(parsed, { source: "manual", name: inferManualImportProjectName(parsed, isSubtitleWorkflow ? "手动导入字幕文本" : "手动导入转写文本") });
+    requestImportRows(parsed, { source: "manual", name: inferManualImportProjectName(parsed, isSubtitleWorkflow ? "手动导入字幕文本" : "手动导入转写文本"), splitRowCount: repairResult.splitRowCount });
   };
 
   const confirmPendingImport = () => {
@@ -4213,6 +4286,11 @@ ${JSON.stringify(chunk.map((row) => ({ id: row.id, start: row.start, end: row.en
                   {qualityIssueRows.length > 0 && (
                     <button className="quality-jump-button" type="button" onClick={jumpToNextQualityIssue} aria-label="跳到下一处质量提示" title="跳到下一处质量提示">
                       下一处提示
+                    </button>
+                  )}
+                  {longSubtitleIssueRows.length > 0 && (
+                    <button className="secondary" type="button" onClick={repairLongSubtitleRows} aria-label={`拆分 ${longSubtitleIssueRows.length} 条过长段落`} title="按标点和可读长度自动拆分过长段落">
+                      拆分长段
                     </button>
                   )}
                   {showReviewPagination && (
@@ -5927,6 +6005,9 @@ export function App() {
     const isCurrent = options.isCurrent || (() => true);
     const workspaceProject = await loadWorkspaceProject(projectId);
     if (!isCurrent()) return { stale: true };
+    const repairedProjectRows = Array.isArray(workspaceProject.rows)
+      ? repairReadableReviewRows(workspaceProject.rows)
+      : { rows: [], splitRowCount: 0, addedRowCount: 0 };
     const recent = {
       ...(fallbackItem || {}),
       ...(workspaceProject.recent || {}),
@@ -5934,8 +6015,8 @@ export function App() {
       hasWorkspaceCopy: true,
       hasMediaCopy: Boolean(workspaceProject.media?.fileName || workspaceProject.mediaUrl),
       hasAsrAudioCopy: Boolean(workspaceProject.asrAudio?.fileName || workspaceProject.asrAudioUrl),
-      rowCount: Array.isArray(workspaceProject.rows) ? workspaceProject.rows.length : 0,
-      recoverableState: Array.isArray(workspaceProject.rows) && workspaceProject.rows.length
+      rowCount: repairedProjectRows.rows.length,
+      recoverableState: repairedProjectRows.rows.length
         ? "has-results"
         : workspaceProject.media?.fileName || workspaceProject.mediaUrl
           ? "media-only"
@@ -5949,9 +6030,10 @@ export function App() {
     setWorkspaceFeatureId(feature.id);
     setActiveTool(feature.id);
     setActiveNav("workbench");
-    setRows(Array.isArray(workspaceProject.rows) ? normalizeReviewRows(workspaceProject.rows) : []);
+    setRows(repairedProjectRows.rows);
     setMedia(restoredMedia);
     setWorkspaceState({ ...defaultWorkspaceState, ...(workspaceProject.workspaceState || {}) });
+    setWorkspaceNotice(null);
     savedMediaSignatureRef.current = mediaSignature(restoredMedia);
     savedWorkspaceMediaSignatureRef.current = primaryMediaSignature(restoredMedia);
     savedWorkspaceAudioSignatureRef.current = audioTrackSignature(restoredMedia?.asrAudio);
@@ -5962,10 +6044,6 @@ export function App() {
     setWorkspaceStatus((current) => current.configured
       ? { ...current, projects: mergeRecentProjects([recent], current.projects || []) }
       : current);
-    setWorkspaceNotice({
-      id: Date.now(),
-      text: `已从本地工作区恢复项目：${recent.name || fallbackItem?.name || "未命名项目"}`,
-    });
     return { tool: feature.id, recent };
   };
 
