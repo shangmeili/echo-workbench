@@ -201,8 +201,26 @@ assert.deepEqual(
     "我们现在看到的情况是点击开始转写以后",
     "按钮会变成转写中",
     "但是过一段时间又恢复成开始转写页面",
-    "没有告诉我到底失败在哪里这对",
-    "普通用户来说是不可接受的",
+    "没有告诉我到底失败在哪里",
+    "这对普通用户来说是不可接受的",
+  ],
+);
+
+assert.deepEqual(
+  splitTranscriptIntoSentences("所有字幕转写单条过长没有按照合理的断句时间重叠也不应该要求用户处理"),
+  [
+    "所有字幕转写单条过长",
+    "没有按照合理的断句",
+    "时间重叠也不应该要求用户处理",
+  ],
+);
+
+assert.deepEqual(
+  splitTranscriptIntoSentences("开始转写失败以后页面不能只是恢复按钮状态而应该展示具体失败阶段并保留可重试状态"),
+  [
+    "开始转写失败以后页面不能只是恢复按钮状态",
+    "而应该展示具体失败阶段",
+    "并保留可重试状态",
   ],
 );
 
@@ -266,9 +284,12 @@ for (const rows of [
   splitTranscriptIntoSentences("视频上传后应该直接可以开始转写如果模型返回的内容没有标点"),
   splitTranscriptIntoSentences("界面不应该把翻译放在主流程前面也不应该让转写按钮藏在后处理里面"),
   splitTranscriptIntoSentences("这类错误不应该作为提示由用户解决而是作为功能问题解决"),
+  splitTranscriptIntoSentences("所有字幕转写单条过长没有按照合理的断句时间重叠也不应该要求用户处理"),
+  splitTranscriptIntoSentences("开始转写失败以后页面不能只是恢复按钮状态而应该展示具体失败阶段并保留可重试状态"),
 ]) {
   const joined = rows.join("|");
-  assert.doesNotMatch(joined, /普通\|用户|用户\|来说|由\|用户|用户\|解决|产品\|经理|上线\|计划|专有\|名词|返\|回失败|到\|底|把\|翻译|视频上传后\|应该|直接\|可以/, "Chinese hard split should not break common product and subtitle-review phrases");
+  assert.doesNotMatch(joined, /这对\|普通用户|普通\|用户|用户\|来说|由\|用户|用户\|解决|产品\|经理|上线\|计划|专有\|名词|返\|回失败|到\|底|合理\|的断句|时间重叠\|也不应该|不能\|只是|把\|翻译|视频上传后\|应该|直接\|可以/, "Chinese hard split should not break common product and subtitle-review phrases");
+  assert.doesNotMatch(joined, /(不能|而|由)($|\|)/, "Chinese rows should not end on weak helper words when a better split exists");
 }
 
 assert.ok(
