@@ -15,13 +15,7 @@ export function splitTranscriptIntoSentences(text) {
   const rows = chunks.flatMap((chunk) => splitLongSentenceChunk(chunk));
   if (rows.length > 1) return rows;
   if (/\s/.test(clean) && /[A-Za-z]/.test(clean)) {
-    const words = clean.split(/\s+/).filter(Boolean);
-    const result = [];
-    const maxWords = maxMergedUnits(clean);
-    for (let index = 0; index < words.length; index += maxWords) {
-      result.push(words.slice(index, index + maxWords).join(" "));
-    }
-    return result.filter(Boolean);
+    return splitEnglishTextByReadableLength(clean, maxMergedUnits(clean));
   }
   const maxChars = maxMergedUnits(clean);
   return splitCjkTextByReadableLength(clean, maxChars);
@@ -151,10 +145,7 @@ function splitLongSentenceChunk(text) {
   };
   const hardSplit = (value) => {
     if (isLatinText(value)) {
-      const words = value.split(/\s+/).filter(Boolean);
-      for (let index = 0; index < words.length; index += maxUnits) {
-        result.push(words.slice(index, index + maxUnits).join(" "));
-      }
+      result.push(...splitEnglishTextByReadableLength(value, maxUnits));
       return;
     }
     result.push(...splitCjkTextByReadableLength(value, maxUnits));
@@ -175,6 +166,60 @@ function splitLongSentenceChunk(text) {
   }
   flushCurrent();
   return result.length ? result : [clean];
+}
+
+const englishBreakBeforeWords = new Set([
+  "and", "but", "because", "so", "if", "when", "while", "where", "which", "who", "then",
+  "however", "therefore", "although", "though", "unless",
+]);
+
+const englishWeakEndingWords = new Set([
+  "a", "an", "the", "and", "or", "but", "because", "that", "which", "who", "to", "of",
+  "for", "in", "on", "at", "with", "from", "into", "as", "by",
+]);
+
+function cleanEnglishWord(word) {
+  return String(word || "").replace(/^[^A-Za-z0-9']+|[^A-Za-z0-9']+$/g, "").toLowerCase();
+}
+
+function splitEnglishTextByReadableLength(value, maxWords) {
+  const words = String(value || "").trim().split(/\s+/).filter(Boolean);
+  if (!words.length) return [];
+  const limit = Math.max(6, Number(maxWords) || 10);
+  const lastChunkLimit = limit + 2;
+  const result = [];
+  let remaining = words;
+  while (remaining.length > lastChunkLimit) {
+    const splitIndex = chooseReadableEnglishSplitIndex(remaining, limit);
+    result.push(remaining.slice(0, splitIndex).join(" "));
+    remaining = remaining.slice(splitIndex);
+  }
+  if (remaining.length) result.push(remaining.join(" "));
+  return result.filter(Boolean);
+}
+
+function chooseReadableEnglishSplitIndex(words, maxWords) {
+  const minWords = Math.max(4, Math.floor(maxWords * 0.5));
+  const upper = Math.min(maxWords, words.length - 1);
+  const target = Math.max(minWords, maxWords * 0.78);
+  const candidates = [];
+
+  for (let index = minWords; index <= upper; index += 1) {
+    const before = words[index - 1] || "";
+    const current = words[index] || "";
+    const beforeClean = cleanEnglishWord(before);
+    const currentClean = cleanEnglishWord(current);
+    const tailWords = words.length - index;
+    let score = Math.abs(index - target);
+    if (/[,.!?;:]$/.test(before)) score -= 7;
+    if (englishBreakBeforeWords.has(currentClean)) score -= 4;
+    if (englishWeakEndingWords.has(beforeClean)) score += 8;
+    if (tailWords < 4) score += 6;
+    candidates.push({ index, score });
+  }
+
+  candidates.sort((left, right) => left.score - right.score);
+  return candidates[0]?.index || Math.min(maxWords, Math.max(1, words.length - 1));
 }
 
 function splitCjkImplicitSentenceBoundaries(text) {

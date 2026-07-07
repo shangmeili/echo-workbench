@@ -58,7 +58,13 @@ assert.deepEqual(
 
 assert.deepEqual(
   splitTranscriptIntoSentences("this is a long english transcription result without punctuation and it should be split into readable subtitle rows for proofreading"),
-  ["this is a long english transcription result without punctuation and", "it should be split into readable subtitle rows for proofreading"],
+  ["this is a long english transcription result without punctuation", "and it should be split into readable subtitle rows for proofreading"],
+);
+
+assert.ok(
+  splitTranscriptIntoSentences("this is a long english transcription result without punctuation and it should be split into readable subtitle rows for proofreading")
+    .every((row) => !/\b(?:and|or|but|that|which|who|to|of|for|in|on|at|with|from|into|as|by)$/i.test(row)),
+  "English subtitle rows should not end on weak connector words when a better split exists",
 );
 
 assert.deepEqual(
