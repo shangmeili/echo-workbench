@@ -45,7 +45,7 @@ import { getAsrLanguageCode, getAsrLanguageCompatibilityWarning } from "./asrLan
 import { asrProviderPresets, defaultAsrProvider } from "./asrPresets.js";
 import { buildTranslationMessages, formatTermReference, stripWrappingCodeFence } from "./modelText.js";
 import { getCorrectedTextValue, getTranslationValue, parseJsonArrayFromModelText } from "./modelResponse.js";
-import { getSubtitleQualityHints, hasTimingExportIssue, normalizeReviewRows, repairReviewStructure, repairReviewStructurePreservingEmpty, repairReviewTimelinePreservingEmpty } from "./reviewRows.js";
+import { getSubtitleQualityHints, hasTimingExportIssue, normalizeReviewRows, repairReviewStructure, repairReviewStructurePreservingEmpty } from "./reviewRows.js";
 import { parseSubtitle, parseTimestamp } from "./subtitleImport.js";
 import { exportRows, formatClock, validateExportRows } from "./subtitleExport.js";
 import { defaultWorkspaceState, workspaceDefaultsForFeature } from "./workspaceDefaults.js";
@@ -1592,7 +1592,7 @@ function WorkbenchView({ activeTool, onBackHome, rows, setRows, media, setMedia,
   });
 
   const restoreEditSnapshot = (snapshot) => {
-    const restoredRows = repairReviewTimelinePreservingEmpty(snapshot.rows.map((row) => ({ ...row })));
+    const restoredRows = repairReviewStructureUnlessEmpty(snapshot.rows.map((row) => ({ ...row }))).rows;
     setRows(restoredRows);
     setMedia(cloneMediaState(snapshot.media));
     setWorkspaceState({ ...defaultWorkspaceState, ...snapshot.workspaceState });
@@ -3315,8 +3315,9 @@ ${JSON.stringify(chunk.map((row) => ({ id: row.id, start: row.start, end: row.en
       reviewStatus: row.reviewStatus === "confirmed" ? "pending" : row.reviewStatus,
     }));
     pushUndoSnapshot(effectiveOffset < 0 ? "整体提前时间码" : "整体延后时间码");
-    setRows(normalizeReviewRows(nextRows));
-    markRowsEdited(nextRows.length);
+    const repairResult = repairReviewStructureUnlessEmpty(nextRows);
+    setRows(repairResult.rows);
+    markRowsEdited(repairResult.rows.length);
     setMessage(`已将全部时间码${effectiveOffset < 0 ? "提前" : "延后"} ${Math.abs(effectiveOffset).toFixed(1)} 秒，可使用撤销恢复。`);
   };
 

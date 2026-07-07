@@ -1437,6 +1437,11 @@ try {
   await page.getByRole("button", { name: "撤销", exact: true }).click();
   await page.waitForFunction(() => document.querySelectorAll(".review-list-row").length === 4);
   assert.match(await page.locator(".review-list-row").first().innerText(), /带时间范围的开场/);
+  await page.getByRole("button", { name: "重做", exact: true }).click();
+  await page.waitForFunction(() => document.querySelectorAll(".review-list-row").length > 4);
+  assert.doesNotMatch(await page.locator(".current-segment-card").innerText(), /单条过长/, "redo should restore the repaired split rows instead of reviving an oversized segment");
+  await page.getByRole("button", { name: "撤销", exact: true }).click();
+  await page.waitForFunction(() => document.querySelectorAll(".review-list-row").length === 4);
   await assertNarrowNoMediaResultLayout(page, "视频转写");
   const topHistoryLayout = await page.evaluate(() => [...document.querySelectorAll(".top-history-control button")].map((button) => {
     const rect = button.getBoundingClientRect();
