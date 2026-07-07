@@ -456,6 +456,42 @@ export function joinAsrTokens(words) {
   return normalizeAsrText(text);
 }
 
+function splitTimedTextRow(row, idPrefix = "asr-row") {
+  const text = normalizeAsrText(row?.text || "");
+  if (!text) return [];
+  const sentences = splitTranscriptIntoSentences(text);
+  if (sentences.length <= 1 && transcriptWeight(text) <= maxMergedUnits(text)) {
+    return [{ ...row, text }];
+  }
+
+  const start = finiteNumber(row?.start, 0);
+  const fallbackEnd = start + estimateSpeechDurationForText(text);
+  const end = Math.max(start + 0.5, finiteNumber(row?.end, fallbackEnd));
+  const duration = end - start;
+  const totalWeight = sentences.reduce((sum, sentence) => sum + transcriptWeight(sentence), 0) || sentences.length || 1;
+  const minimumSegmentDuration = Math.min(1.1, Math.max(0.35, (duration / Math.max(sentences.length, 1)) * 0.45));
+  let cursor = start;
+
+  return sentences.map((sentence, index) => {
+    const isLast = index === sentences.length - 1;
+    const remainingSegments = sentences.length - index - 1;
+    const proportional = duration * (transcriptWeight(sentence) / totalWeight);
+    const segmentDuration = isLast ? end - cursor : Math.max(proportional, minimumSegmentDuration);
+    const latestEnd = Math.max(cursor + 0.3, end - remainingSegments * minimumSegmentDuration);
+    const rowEnd = isLast ? end : Math.min(latestEnd, cursor + segmentDuration);
+    const next = {
+      ...row,
+      id: index === 0 ? row.id : `${idPrefix}-${Date.now()}-${index}`,
+      start: cursor,
+      end: Math.max(cursor + 0.35, rowEnd),
+      text: sentence,
+      translation: "",
+    };
+    cursor = next.end;
+    return next;
+  }).filter((item) => item.text.trim());
+}
+
 export function groupWordsToRows(words) {
   const rows = [];
   let group = [];
@@ -465,14 +501,14 @@ export function groupWordsToRows(words) {
     const end = Math.max(start + 0.2, wordEnd(group.at(-1)));
     const text = joinAsrTokens(group);
     if (text) {
-      rows.push({
+      rows.push(...splitTimedTextRow({
         id: `asr-${Date.now()}-${rows.length}`,
         start,
         end,
         speaker: "未标注",
         text,
         translation: "",
-      });
+      }, "asr-word"));
     }
     group = [];
   };

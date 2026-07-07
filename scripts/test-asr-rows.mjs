@@ -163,6 +163,51 @@ assert.deepEqual(
   ],
 );
 
+const longSingleTokenWordRows = groupWordsToRows([
+  {
+    text: "我知道你不相信我但是我们现在必须离开这里否则就来不及了",
+    start_time: 0,
+    end_time: 8,
+  },
+]);
+
+assert.ok(longSingleTokenWordRows.length > 1, "word-level ASR rows should split a long single-token transcript");
+assert.ok(
+  longSingleTokenWordRows.every((row) => transcriptWeight(row.text) <= 20),
+  `word-level long token rows should be readable: ${longSingleTokenWordRows.map((row) => row.text).join(" | ")}`,
+);
+for (let index = 1; index < longSingleTokenWordRows.length; index += 1) {
+  assert.ok(longSingleTokenWordRows[index].start >= longSingleTokenWordRows[index - 1].end);
+}
+assert.equal(longSingleTokenWordRows.at(-1).end, 8);
+
+const longEnglishWordRows = groupWordsToRows([
+  { word: "I", start: 0, end: 0.2 },
+  { word: "have", start: 0.2, end: 0.5 },
+  { word: "spent", start: 0.5, end: 0.8 },
+  { word: "the", start: 0.8, end: 1 },
+  { word: "last", start: 1, end: 1.25 },
+  { word: "three", start: 1.25, end: 1.55 },
+  { word: "weeks", start: 1.55, end: 1.9 },
+  { word: "sending", start: 1.9, end: 2.25 },
+  { word: "people", start: 2.25, end: 2.6 },
+  { word: "into", start: 2.6, end: 2.9 },
+  { word: "that", start: 2.9, end: 3.1 },
+  { word: "river", start: 3.1, end: 3.5 },
+  { word: "to", start: 3.5, end: 3.7 },
+  { word: "look", start: 3.7, end: 4 },
+  { word: "for", start: 4, end: 4.2 },
+  { word: "that", start: 4.2, end: 4.4 },
+  { word: "bell", start: 4.4, end: 4.8 },
+]);
+
+assert.ok(longEnglishWordRows.length > 1, "word-level English ASR rows should split long unpunctuated speech");
+assert.ok(
+  longEnglishWordRows.every((row) => transcriptWeight(row.text) <= 12),
+  `word-level English rows should be readable: ${longEnglishWordRows.map((row) => row.text).join(" | ")}`,
+);
+assert.equal(longEnglishWordRows.at(-1).end, 4.8);
+
 const abbreviationWordRows = groupWordsToRows([
   { word: "Dr.", start: 0, end: 0.25 },
   { word: "Smith", start: 0.25, end: 0.6 },
