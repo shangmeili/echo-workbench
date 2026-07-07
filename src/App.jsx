@@ -2953,7 +2953,7 @@ ${rawText}`;
           ...(item.reviewStatus === "confirmed" ? { reviewStatus: "pending" } : {}),
         }
         : item));
-      return normalizeReviewRows(repairAsrTimeline(editedRows));
+      return repairReviewStructureUnlessEmpty(editedRows).rows;
     });
     markRowsEdited(rows.length);
     return true;

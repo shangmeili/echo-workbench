@@ -1625,6 +1625,7 @@ try {
   await page.getByLabel("当前段落结束时间").press("Enter");
   await page.waitForFunction(() => document.querySelector(".review-list-row")?.innerText.includes("00:04.500 - 00:06.750"));
   assert.doesNotMatch(await page.locator(".current-segment-card").innerText(), /时间重叠|时间无效/, "manual time edits should be normalized immediately instead of leaving timeline errors for the user");
+  assert.doesNotMatch(await page.locator(".current-segment-card").innerText(), /单条过长/, "manual time edits should use the full review repair path, not only timeline normalization");
   const speakerAssignment = page.getByLabel("当前段落说话人归属");
   await speakerAssignment.waitFor({ state: "visible" });
   assert.equal(await speakerAssignment.inputValue(), "Speaker 1", "current segment should show the parsed speaker in a compact assignment control");
