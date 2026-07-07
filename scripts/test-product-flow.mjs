@@ -1525,6 +1525,7 @@ try {
   assert.equal(await page.getByRole("button", { name: "替换转写文件", exact: true }).isVisible(), true, "text-import result state should keep replace transcript as a compact processing action");
   await page.getByRole("button", { name: "添加段落", exact: true }).click();
   await page.waitForFunction(() => document.querySelector(".current-segment-card textarea")?.value.includes("新转写段落"));
+  assert.doesNotMatch(await page.locator(".current-segment-card").innerText(), /时间重叠|时间无效/, "adding a proofreading segment should normalize the timeline immediately");
   const singleSpeakerAssignment = page.getByLabel("当前段落说话人归属");
   await singleSpeakerAssignment.waitFor({ state: "visible" });
   assert.equal(await singleSpeakerAssignment.inputValue(), "未标注", "new unlabeled segments should expose speaker assignment when known speakers exist");
@@ -1671,6 +1672,7 @@ try {
   assert.match(insertedRows[2], /新转写段落/, "adding a proofreading segment should insert after the current segment");
   assert.match(insertedRows[3], /Explicit range line/);
   assert.match(insertedRows[4], /小数时间范围/);
+  assert.doesNotMatch(await page.locator(".current-segment-card").innerText(), /时间重叠|时间无效/, "inserted proofreading segment should not overlap the following row");
   assert.match(await page.locator(".current-segment-card").innerText(), /3\/5/);
   await page.getByRole("button", { name: "撤销", exact: true }).click();
   await page.waitForFunction(() => document.querySelectorAll(".review-list-row").length === 4);

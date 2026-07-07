@@ -3054,11 +3054,13 @@ ${JSON.stringify(chunk.map((row) => ({ id: row.id, start: row.start, end: row.en
     const text = addRowText || "";
     const newRow = { id: `row-${Date.now()}`, start, end, speaker: "未标注", text, originalText: text, translation: "", reviewStatus: "pending" };
     pushUndoSnapshot("添加段落");
-    setRows((current) => [
-      ...current.slice(0, insertIndex),
+    const nextRows = [
+      ...rows.slice(0, insertIndex),
       newRow,
-      ...current.slice(insertIndex),
-    ]);
+      ...rows.slice(insertIndex),
+    ];
+    setRows(normalizeReviewRows(repairAsrTimeline(nextRows)));
+    markRowsEdited(nextRows.length);
     setSelectedRowId(newRow.id);
   };
 
