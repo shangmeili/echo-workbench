@@ -785,6 +785,89 @@ export function asrResultHasTiming(result) {
   );
 }
 
+function stripOverlapToken(value) {
+  return String(value || "")
+    .replace(/^[^A-Za-z0-9\u4e00-\u9fa5']+|[^A-Za-z0-9\u4e00-\u9fa5']+$/g, "")
+    .toLowerCase();
+}
+
+function overlapWords(text) {
+  return String(text || "")
+    .trim()
+    .split(/\s+/)
+    .map((word) => stripOverlapToken(word))
+    .filter(Boolean);
+}
+
+function trimLatinRepeatedBoundaryPrefix(previousText, currentText) {
+  const previousParts = String(previousText || "").trim().split(/\s+/).filter(Boolean);
+  const currentParts = String(currentText || "").trim().split(/\s+/).filter(Boolean);
+  const previousWords = previousParts.map((word) => stripOverlapToken(word));
+  const currentWords = currentParts.map((word) => stripOverlapToken(word));
+  const maxOverlap = Math.min(previousWords.length, currentWords.length, 10);
+
+  for (let size = maxOverlap; size >= 3; size -= 1) {
+    const previousSlice = previousWords.slice(-size);
+    const currentSlice = currentWords.slice(0, size);
+    if (!previousSlice.every((word, index) => word && word === currentSlice[index])) continue;
+    return normalizeAsrText(currentParts.slice(size).join(" ").replace(/^[,.;:!?，。！？；：、\s]+/, ""));
+  }
+  return null;
+}
+
+function compactOverlapText(text) {
+  return normalizeAsrText(text)
+    .replace(/[^\u4e00-\u9fa5A-Za-z0-9]+/g, "")
+    .toLowerCase();
+}
+
+function removeCompactPrefix(text, compactPrefix) {
+  let cursor = 0;
+  let matched = "";
+  const source = String(text || "");
+  while (cursor < source.length && matched.length < compactPrefix.length) {
+    const char = source[cursor];
+    const normalized = compactOverlapText(char);
+    if (normalized) {
+      if (normalized !== compactPrefix[matched.length]) return null;
+      matched += normalized;
+    }
+    cursor += 1;
+  }
+  if (matched !== compactPrefix) return null;
+  return normalizeAsrText(source.slice(cursor).replace(/^[,.;:!?，。！？；：、\s]+/, ""));
+}
+
+function trimCompactRepeatedBoundaryPrefix(previousText, currentText) {
+  const previous = compactOverlapText(previousText);
+  const current = compactOverlapText(currentText);
+  const maxOverlap = Math.min(previous.length, current.length, 24);
+  for (let size = maxOverlap; size >= 4; size -= 1) {
+    const overlap = previous.slice(-size);
+    if (current.slice(0, size) !== overlap) continue;
+    return removeCompactPrefix(currentText, overlap);
+  }
+  return null;
+}
+
+function trimRepeatedBoundaryPrefix(previousText, currentText) {
+  const previous = normalizeAsrText(previousText);
+  const current = normalizeAsrText(currentText);
+  if (!previous || !current) return current;
+  if (previous === current) return "";
+
+  const previousWords = overlapWords(previous);
+  const currentWords = overlapWords(current);
+  if (previousWords.length >= 3 && currentWords.length >= 3) {
+    const latinTrimmed = trimLatinRepeatedBoundaryPrefix(previous, current);
+    if (latinTrimmed !== null) return latinTrimmed;
+  }
+
+  const compactTrimmed = trimCompactRepeatedBoundaryPrefix(previous, current);
+  if (compactTrimmed !== null) return compactTrimmed;
+  return current;
+}
+
 export function dedupeAdjacentAsrRows(rows, maxGapSeconds = 1.2) {
   const sorted = [...(Array.isArray(rows) ? rows : [])].sort((a, b) => {
     const startDiff = finiteNumber(a?.start, 0) - finiteNumber(b?.start, 0);
@@ -805,6 +888,20 @@ export function dedupeAdjacentAsrRows(rows, maxGapSeconds = 1.2) {
         end: Math.max(finiteNumber(previous.end, 0), finiteNumber(row.end, 0)),
       };
       continue;
+    }
+    if (closeToPrevious) {
+      const trimmedText = trimRepeatedBoundaryPrefix(previousText, text);
+      if (trimmedText !== text) {
+        if (!trimmedText) {
+          result[result.length - 1] = {
+            ...previous,
+            end: Math.max(finiteNumber(previous.end, 0), finiteNumber(row.end, 0)),
+          };
+          continue;
+        }
+        result.push({ ...row, text: trimmedText });
+        continue;
+      }
     }
     result.push({ ...row, text });
   }

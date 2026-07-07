@@ -355,6 +355,36 @@ assert.deepEqual(
   ],
 );
 
+const partialChineseDedupedRows = dedupeAdjacentAsrRows([
+  { id: "a", start: 0, end: 2.4, speaker: "未标注", text: "边界重复句。新的内容。", translation: "" },
+  { id: "b", start: 2.1, end: 4.8, speaker: "未标注", text: "新的内容。第三句。", translation: "" },
+]);
+
+assert.deepEqual(
+  partialChineseDedupedRows.map((row) => row.text),
+  ["边界重复句。新的内容。", "第三句。"],
+);
+
+const partialEnglishDedupedRows = dedupeAdjacentAsrRows([
+  { id: "a", start: 0, end: 2.3, speaker: "未标注", text: "Previously on The Vampire Diaries", translation: "" },
+  { id: "b", start: 2.1, end: 4.2, speaker: "未标注", text: "The Vampire Diaries You left your son.", translation: "" },
+]);
+
+assert.deepEqual(
+  partialEnglishDedupedRows.map((row) => row.text),
+  ["Previously on The Vampire Diaries", "You left your son."],
+);
+
+const distantRepeatedRows = dedupeAdjacentAsrRows([
+  { id: "a", start: 0, end: 2.3, speaker: "未标注", text: "The Vampire Diaries", translation: "" },
+  { id: "b", start: 8, end: 10, speaker: "未标注", text: "The Vampire Diaries continues.", translation: "" },
+]);
+
+assert.deepEqual(
+  distantRepeatedRows.map((row) => row.text),
+  ["The Vampire Diaries", "The Vampire Diaries continues."],
+);
+
 const mergedShortRows = mergeShortAdjacentAsrRows([
   { id: "a", start: 0, end: 0.8, speaker: "S1", text: "I can", translation: "" },
   { id: "b", start: 0.85, end: 1.6, speaker: "S1", text: "become the Ripper", translation: "" },
