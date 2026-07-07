@@ -26,7 +26,7 @@ const phraseBreakBeforePatterns = [
   "然后", "所以", "但是", "不过", "可是", "因为", "如果", "否则", "虽然", "只是",
   "同时", "并且", "以及", "为了", "接着", "另外", "最后", "首先", "为什么",
   "需要", "应该", "可以", "可能", "其实", "就是", "就像", "那么", "总之", "换句话说",
-  "不要", "不应该", "交给",
+  "不要",
   "好的", "而是", "而不是", "也要", "系统", "这部分", "源语言", "目标语言", "翻译", "校对窗口", "按钮",
   "是的", "不是",
   "你会", "我会", "我们", "他们", "她们", "它们", "这个", "那个", "这些", "那些", "这里", "那里",
@@ -39,11 +39,20 @@ const phraseStrongBreakBeforePatterns = new Set([
   "然后", "所以", "但是", "不过", "可是", "因为", "如果", "否则", "虽然", "只是",
   "同时", "并且", "以及", "为了", "接着", "另外", "最后", "首先", "为什么",
   "需要", "应该", "可以", "可能", "其实", "就是", "就像", "那么", "总之", "换句话说",
-  "不要", "不应该", "交给",
+  "不要",
   "好的", "而是", "而不是", "也要", "系统", "这部分", "源语言", "目标语言", "翻译", "校对窗口", "按钮",
   "是的", "不是", "你会", "我会", "我知道", "我觉得", "我以为", "我想", "我要", "我不", "我希望",
   "你知道", "你觉得", "你想", "你要", "你不", "是不是",
 ]);
+
+const implicitBreakBeforePatterns = [
+  "然后", "所以", "但是", "不过", "可是", "因为", "如果", "否则", "虽然", "只是",
+  "同时", "并且", "以及", "为了", "接着", "另外", "最后", "首先", "为什么",
+  "需要", "应该", "可以", "可能", "其实", "就是", "就像", "那么", "总之", "换句话说",
+  "好的", "也要", "不要", "系统",
+  "你会", "我会", "我知道", "我觉得", "我以为", "我想", "我要", "我不", "我希望",
+  "你知道", "你觉得", "你想", "你要", "你不",
+];
 
 const phraseBreakAfterPatterns = [
   "等一下", "等一等", "没关系", "好的", "是的", "不是", "好了", "够了", "死了", "完了", "对吧", "好吗", "知道了",
@@ -323,6 +332,8 @@ function splitCjkImplicitSentenceBoundaries(text) {
   const value = String(text || "").trim();
   const innerValue = value.replace(/[。！？!?；;]+$/g, "");
   if (!/[\u4e00-\u9fa5]/.test(value) || /[。！？!?；;，,、：:]/.test(innerValue)) return [value].filter(Boolean);
+  const languageBoundaryParts = splitMixedCjkLatinBoundaries(value);
+  if (languageBoundaryParts.length > 1) return languageBoundaryParts;
   const boundaryPattern = /(吗|呢|吧|好了|够了|死了|完了|什么|知道了|没关系|是的)(?=(我|你|他|她|它|我们|你们|他们|她们|这个|那个|这些|那些|这里|那里|这叫|但是|可是|不过|然后|所以|如果|否则|因为|同时|另外|最后|接着|欢迎|现在|在))/g;
   const boundaryIndexes = [];
   let match;
@@ -365,6 +376,19 @@ function splitCjkImplicitSentenceBoundaries(text) {
       boundaryIndexes.push(splitIndex);
     }
   }
+  for (const pattern of implicitBreakBeforePatterns) {
+    let index = value.indexOf(pattern);
+    while (index > 0) {
+      if (!isProtectedCjkPatternBoundary(value, index, pattern)) {
+        const before = value.slice(0, index).trim();
+        const after = value.slice(index).trim();
+        if (transcriptWeight(before) >= 4 && transcriptWeight(after) >= 4) {
+          boundaryIndexes.push(index);
+        }
+      }
+      index = value.indexOf(pattern, index + pattern.length);
+    }
+  }
   const newQuestionPattern = /(这个|那个|这里|那里)(可以吗|对吗|好吗|是不是|行吗)/g;
   while ((match = newQuestionPattern.exec(value)) !== null) {
     const splitIndex = match.index;
@@ -399,6 +423,36 @@ function splitCjkImplicitSentenceBoundaries(text) {
   const tail = value.slice(cursor).trim();
   if (tail) result.push(tail);
   return result.length > 1 ? result : [value];
+}
+
+function splitMixedCjkLatinBoundaries(value) {
+  const text = String(value || "").trim();
+  const boundaryIndexes = [];
+  const addBoundary = (index) => {
+    const before = text.slice(0, index).trim();
+    const after = text.slice(index).trim();
+    if (transcriptWeight(before) >= 4 && transcriptWeight(after) >= 4) boundaryIndexes.push(index);
+  };
+
+  for (let index = 1; index < text.length; index += 1) {
+    const previous = text[index - 1] || "";
+    const current = text[index] || "";
+    if (/[\u4e00-\u9fa5]/.test(previous) && /[A-Za-z]/.test(current)) addBoundary(index);
+    if (/[A-Za-z0-9]$/.test(previous) && /[\u4e00-\u9fa5]/.test(current)) addBoundary(index);
+  }
+
+  const sortedIndexes = [...new Set(boundaryIndexes)].sort((left, right) => left - right);
+  if (!sortedIndexes.length) return [text];
+  const result = [];
+  let cursor = 0;
+  for (const splitIndex of sortedIndexes) {
+    const part = text.slice(cursor, splitIndex).trim();
+    if (part) result.push(part);
+    cursor = splitIndex;
+  }
+  const tail = text.slice(cursor).trim();
+  if (tail) result.push(tail);
+  return result.length > 1 ? result : [text];
 }
 
 function splitCjkTextByReadableLength(value, maxUnits) {
@@ -512,6 +566,7 @@ export function normalizeAsrText(text) {
     .replace(/([\u4e00-\u9fa5])\?(?=$|[\s\u4e00-\u9fa5])/g, "$1？")
     .replace(/([\u4e00-\u9fa5])!(?=$|[\s\u4e00-\u9fa5])/g, "$1！")
     .replace(/([\u4e00-\u9fa5])\.(?=$|[\s\u4e00-\u9fa5])/g, "$1。")
+    .replace(/([a-z]{3,})([A-Z][a-z]{2,})/g, "$1 $2")
     .trim();
   if (!/[\u4e00-\u9fa5]/.test(value)) return value;
   return value

@@ -111,8 +111,8 @@ function subtitleTextLengthForTiming(value) {
 
 function readableDurationFloor(row) {
   const textLength = subtitleTextLengthForTiming(row?.text || "");
-  if (!textLength) return 0.7;
-  return Math.min(8, Math.max(0.7, textLength / 14));
+  if (!textLength) return 0.72;
+  return Math.min(8, Math.max(0.72, textLength / 14));
 }
 
 function joinReviewText(left, right) {
@@ -236,11 +236,25 @@ export function repairReviewStructure(inputRows = [], options = {}) {
   const timelineLastEnd = Math.max(...timelineRows.map((row) => Number(row.end) || 0), 0);
   const pressureLastEnd = Math.max(...pressureRows.map((row) => Number(row.end) || 0), 0);
   const shouldPreserveBoundedTiming = boundedEnd > 0 && timelineLastEnd <= boundedEnd + 0.001 && pressureLastEnd > boundedEnd + 0.001;
-  const repairedRows = fitRowsWithinMaxEnd(shouldPreserveBoundedTiming ? timelineRows : pressureRows, options.maxEnd);
-  const mergedRowCount = Math.max(0, timedRows.length + readableRepair.addedRowCount + finalReadableRepair.addedRowCount - finalReadableRepair.rows.length);
+  const boundedRows = fitRowsWithinMaxEnd(shouldPreserveBoundedTiming ? timelineRows : pressureRows, options.maxEnd);
+  const stableBaseRows = repairAsrTimeline(dedupeAdjacentAsrRows(boundedRows));
+  const stableMergedRows = mergeShortAdjacentAsrRows(stableBaseRows, { maxGapSeconds: 0.85, maxCombinedDuration: 5.8, ...mergeOptions });
+  const stableReadableRepair = repairReadableReviewRows(repairAsrTimeline(stableMergedRows));
+  const stableTimelineRows = repairAsrTimeline(dedupeAdjacentAsrRows(stableReadableRepair.rows));
+  const stablePressureRows = repairAsrTimeline(repairTimingPressureRows(stableReadableRepair.rows));
+  const stableTimelineLastEnd = Math.max(...stableTimelineRows.map((row) => Number(row.end) || 0), 0);
+  const stablePressureLastEnd = Math.max(...stablePressureRows.map((row) => Number(row.end) || 0), 0);
+  const stableShouldPreserveBoundedTiming = boundedEnd > 0
+    && stableTimelineLastEnd <= boundedEnd + 0.001
+    && stablePressureLastEnd > boundedEnd + 0.001;
+  const repairedRows = fitRowsWithinMaxEnd(
+    stableShouldPreserveBoundedTiming ? stableTimelineRows : stablePressureRows,
+    options.maxEnd,
+  );
+  const mergedRowCount = Math.max(0, timedRows.length + readableRepair.addedRowCount + finalReadableRepair.addedRowCount + stableReadableRepair.addedRowCount - stableReadableRepair.rows.length);
   return {
-    splitRowCount: readableRepair.splitRowCount + finalReadableRepair.splitRowCount,
-    addedRowCount: readableRepair.addedRowCount + finalReadableRepair.addedRowCount,
+    splitRowCount: readableRepair.splitRowCount + finalReadableRepair.splitRowCount + stableReadableRepair.splitRowCount,
+    addedRowCount: readableRepair.addedRowCount + finalReadableRepair.addedRowCount + stableReadableRepair.addedRowCount,
     mergedRowCount,
     rows: normalizeReviewRows(repairedRows),
   };

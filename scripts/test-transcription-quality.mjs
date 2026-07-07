@@ -59,6 +59,25 @@ function assertNoTimingPressure(rows, label) {
   });
 }
 
+function assertStableStructuralRepair(inputRows, label, options = {}) {
+  const firstPass = repairReviewStructure(inputRows, options).rows;
+  const secondPass = repairReviewStructure(firstPass, options).rows;
+  assertCleanTimeline(firstPass, label);
+  firstPass.forEach((row, index) => {
+    const hints = getSubtitleQualityHints(row, firstPass[index + 1]);
+    assert.equal(
+      hints.includes("单条过长"),
+      false,
+      `${label}: row ${index + 1} should not remain too long after structural repair: ${row.text}`,
+    );
+  });
+  assert.deepEqual(
+    firstPass.map((row) => row.text),
+    secondPass.map((row) => row.text),
+    `${label}: structural repair should be stable after one pass`,
+  );
+}
+
 function normalizeLikeWorkbench(rows) {
   return repairReviewStructure(rows).rows;
 }
@@ -146,8 +165,7 @@ assert.deepEqual(
   [
     "这里是一个真实转写场景",
     "我们先看一下这个视频的主要内容",
-    "然后确认每一段字幕",
-    "是不是方便阅读",
+    "然后确认每一段字幕是不是方便阅读",
     "如果出现时间重叠或者单条过长",
     "系统应该自动处理",
     "而不是要求用户自己判断怎么修复",
@@ -394,6 +412,45 @@ for (let seed = 1; seed <= 120; seed += 1) {
     repairedRows.every((row) => row.end <= 10.001),
     `seeded risky timeline repair should stay inside media duration: seed ${seed}`,
   );
+}
+
+const mixedStressPhrases = [
+  "我们先看整体结论",
+  "然后再处理细节",
+  "如果还有问题继续复核",
+  "不要把错误交给用户解决",
+  "而是作为功能问题解决",
+  "这里是模型配置",
+  "开始转写后没有结果",
+  "首先确认音频是否清晰",
+  "你先不要开始",
+  "我们马上处理",
+  "I can become the Ripper",
+  "You abandoned your family",
+  "This is a stable transcription sample",
+];
+
+for (let seed = 1; seed <= 300; seed += 1) {
+  const random = seededRandom(seed);
+  const rowCount = 2 + Math.floor(random() * 8);
+  let cursor = Math.max(0, random() * 2 - 0.5);
+  const mixedRows = Array.from({ length: rowCount }, (_, index) => {
+    const start = cursor + (random() * 0.5 - 0.15);
+    const end = start + random() * 2.2 - 0.2;
+    const text = Array.from({ length: 1 + Math.floor(random() * 3) }, () => (
+      mixedStressPhrases[Math.floor(random() * mixedStressPhrases.length)]
+    )).join(random() < 0.5 ? " " : "");
+    cursor = end + (random() * 0.8 - 0.2);
+    return {
+      id: `mixed-seed-${seed}-${index}`,
+      start,
+      end,
+      speaker: random() < 0.8 ? "未标注" : "S2",
+      text,
+      translation: "",
+    };
+  });
+  assertStableStructuralRepair(mixedRows, `mixed-language structural repair seed ${seed}`, { maxEnd: 20 });
 }
 
 console.log("transcription quality gate passed");
