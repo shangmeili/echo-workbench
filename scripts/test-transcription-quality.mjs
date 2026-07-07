@@ -4,7 +4,7 @@ import {
   splitTranscriptIntoSentences,
   transcriptWeight,
 } from "../src/asrRows.js";
-import { getSubtitleQualityHints, normalizeReviewRows, repairReviewStructure, repairReviewStructurePreservingEmpty, repairReviewTimelinePreservingEmpty } from "../src/reviewRows.js";
+import { getSubtitleQualityHints, hasTimingExportIssue, normalizeReviewRows, repairReviewStructure, repairReviewStructurePreservingEmpty, repairReviewTimelinePreservingEmpty } from "../src/reviewRows.js";
 import { parseSubtitle } from "../src/subtitleImport.js";
 
 function assertCleanTimeline(rows, label) {
@@ -61,6 +61,14 @@ function assertNoTimingPressure(rows, label) {
 
 function normalizeLikeWorkbench(rows) {
   return repairReviewStructure(rows).rows;
+}
+
+function seededRandom(seed) {
+  let value = seed >>> 0;
+  return () => {
+    value = (value * 1664525 + 1013904223) >>> 0;
+    return value / 2 ** 32;
+  };
 }
 
 const overlappingSegmentRows = normalizeLikeWorkbench(rowsFromAsrResult({
@@ -336,5 +344,31 @@ assert.deepEqual(
   splitTranscriptIntoSentences("The U.S. Army reviewed the audio. next sentence starts lowercase."),
   ["The U.S. Army reviewed the audio.", "next sentence starts lowercase."],
 );
+
+for (let seed = 1; seed <= 120; seed += 1) {
+  const random = seededRandom(seed);
+  const rowCount = 3 + Math.floor(random() * 10);
+  const riskyRows = Array.from({ length: rowCount }, (_, index) => {
+    const start = random() * 8 - 1;
+    const end = start + random() * 2 - 0.5;
+    const text = random() < 0.12
+      ? ""
+      : random() < 0.35
+        ? "这是一条非常非常长并且时间极短的字幕内容后一条和上一条时间重叠"
+        : `测试字幕${index}`;
+    return { id: `seed-${seed}-${index}`, start, end, speaker: "未标注", text, translation: "" };
+  });
+  const repairedRows = repairReviewStructurePreservingEmpty(riskyRows, { maxEnd: 10 }).rows
+    .filter((row) => String(row.text || "").trim());
+  assert.equal(
+    hasTimingExportIssue(repairedRows),
+    false,
+    `seeded risky timeline repair should not leave export-blocking timing issues: seed ${seed}`,
+  );
+  assert.ok(
+    repairedRows.every((row) => row.end <= 10.001),
+    `seeded risky timeline repair should stay inside media duration: seed ${seed}`,
+  );
+}
 
 console.log("transcription quality gate passed");
