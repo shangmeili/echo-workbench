@@ -720,6 +720,19 @@ function repairReviewStructureUnlessEmpty(rows = []) {
   return repairReviewStructure(rows);
 }
 
+function reviewRowsChanged(previousRows = [], nextRows = []) {
+  if (previousRows.length !== nextRows.length) return true;
+  return nextRows.some((row, index) => {
+    const current = previousRows[index];
+    return !current
+      || row.id !== current.id
+      || row.text !== current.text
+      || row.translation !== current.translation
+      || Math.abs((Number(row.start) || 0) - (Number(current.start) || 0)) > 0.001
+      || Math.abs((Number(row.end) || 0) - (Number(current.end) || 0)) > 0.001;
+  });
+}
+
 function displaySpeakerLabel(speaker) {
   const label = String(speaker || "").trim();
   if (!label || label === "未标注") return "";
@@ -1654,16 +1667,7 @@ function WorkbenchView({ activeTool, onBackHome, rows, setRows, media, setMedia,
     }
     if (field === "text" && options.repairStructure) {
       const repairResult = repairReviewStructureUnlessEmpty(rows);
-      const changed = repairResult.rows.length !== rows.length
-        || repairResult.rows.some((row, index) => {
-          const current = rows[index];
-          return !current
-            || row.id !== current.id
-            || row.text !== current.text
-            || Math.abs((Number(row.start) || 0) - (Number(current.start) || 0)) > 0.001
-            || Math.abs((Number(row.end) || 0) - (Number(current.end) || 0)) > 0.001;
-        });
-      if (!changed) return;
+      if (!reviewRowsChanged(rows, repairResult.rows)) return;
       setRows(repairResult.rows);
       if (!repairResult.rows.some((row) => row.id === rowId)) {
         setSelectedRowId(repairResult.rows[0]?.id || "");
@@ -3340,13 +3344,14 @@ ${JSON.stringify(chunk.map((row) => ({ id: row.id, start: row.start, end: row.en
 
   const exportCurrentRows = (format) => {
     let rowsToExport = rows;
-    if (hasTimingExportIssue(rowsToExport)) {
-      const repairedRows = repairReviewStructure(rowsToExport).rows;
+    const exportRepair = repairReviewStructureUnlessEmpty(rowsToExport);
+    if (reviewRowsChanged(rowsToExport, exportRepair.rows)) {
+      const repairedRows = exportRepair.rows;
       if (hasTimingExportIssue(repairedRows)) {
         setMessage("导出失败：系统未能自动修复时间轴，请重新生成转写或导入有效字幕文件。");
         return;
       }
-      pushUndoSnapshot("自动修复时间轴");
+      pushUndoSnapshot("导出前自动修复字幕结构");
       rowsToExport = repairedRows;
       setRows(repairedRows);
       markRowsEdited(repairedRows.length);
