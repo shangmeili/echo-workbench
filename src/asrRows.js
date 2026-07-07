@@ -47,6 +47,7 @@ const phraseStrongBreakBeforePatterns = new Set([
 
 const phraseBreakAfterPatterns = [
   "等一下", "等一等", "没关系", "是的", "不是", "好了", "对吧", "好吗", "知道了",
+  "吗", "呢", "吧",
 ];
 
 function startsWithPattern(text, patterns) {
@@ -131,6 +132,10 @@ function mergeAbbreviationChunks(chunks) {
 function splitLongSentenceChunk(text) {
   const clean = String(text || "").trim();
   if (!clean) return [];
+  const implicitParts = splitCjkImplicitSentenceBoundaries(clean);
+  if (implicitParts.length > 1) {
+    return implicitParts.flatMap((part) => splitLongSentenceChunk(part));
+  }
   const maxUnits = maxMergedUnits(clean);
   if (transcriptWeight(clean) <= maxUnits) return [clean];
   const pieces = clean
@@ -170,6 +175,47 @@ function splitLongSentenceChunk(text) {
   }
   flushCurrent();
   return result.length ? result : [clean];
+}
+
+function splitCjkImplicitSentenceBoundaries(text) {
+  const value = String(text || "").trim();
+  if (!/[\u4e00-\u9fa5]/.test(value) || /[。！？!?；;，,、：:]/.test(value)) return [value].filter(Boolean);
+  const boundaryPattern = /(吗|呢|吧|好了|知道了|没关系|不是|是的)(?=(我|你|他|她|它|我们|你们|他们|她们|这个|那个|这里|那里|但是|可是|不过|然后|所以|如果|否则|因为|同时|另外|最后|接着))/g;
+  const boundaryIndexes = [];
+  let match;
+  while ((match = boundaryPattern.exec(value)) !== null) {
+    const splitIndex = match.index + match[1].length;
+    const before = value.slice(0, splitIndex).trim();
+    const after = value.slice(splitIndex).trim();
+    if (transcriptWeight(before) >= 3 && transcriptWeight(after) >= 3) {
+      boundaryIndexes.push(splitIndex);
+    }
+  }
+  const newQuestionPattern = /(这个|那个|这里|那里)(可以吗|对吗|好吗|是不是|行吗)/g;
+  while ((match = newQuestionPattern.exec(value)) !== null) {
+    const splitIndex = match.index;
+    const before = value.slice(0, splitIndex).trim();
+    const after = value.slice(splitIndex).trim();
+    if (transcriptWeight(before) >= 5 && transcriptWeight(after) >= 3) {
+      boundaryIndexes.push(splitIndex);
+    }
+  }
+  const sortedIndexes = [...new Set(boundaryIndexes)]
+    .filter((index) => index > 0 && index < value.length)
+    .sort((left, right) => left - right);
+  const result = [];
+  let cursor = 0;
+  for (const splitIndex of sortedIndexes) {
+    const before = value.slice(cursor, splitIndex).trim();
+    const after = value.slice(splitIndex).trim();
+    if (transcriptWeight(before) >= 3 && transcriptWeight(after) >= 3) {
+      result.push(before);
+      cursor = splitIndex;
+    }
+  }
+  const tail = value.slice(cursor).trim();
+  if (tail) result.push(tail);
+  return result.length > 1 ? result : [value];
 }
 
 function splitCjkTextByReadableLength(value, maxUnits) {

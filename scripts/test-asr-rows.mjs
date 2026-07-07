@@ -37,6 +37,21 @@ assert.deepEqual(
 );
 
 assert.deepEqual(
+  splitTranscriptIntoSentences("你会想要活着吗我希望活着"),
+  ["你会想要活着吗", "我希望活着"],
+);
+
+assert.deepEqual(
+  splitTranscriptIntoSentences("这个可以吗我们现在继续处理"),
+  ["这个可以吗", "我们现在继续处理"],
+);
+
+assert.deepEqual(
+  splitTranscriptIntoSentences("我正在看着这个人"),
+  ["我正在看着这个人"],
+);
+
+assert.deepEqual(
   splitTranscriptIntoSentences("我以为我们只能给 Kade 最糟糕的最糟糕的就像这个人 Kade 可以有他在这里继续补充后面的长句。"),
   ["我以为我们只能给 Kade 最糟糕的最糟糕的", "就像这个人 Kade", "可以有他在这里继续补充后面的长句。"],
 );
@@ -251,6 +266,8 @@ assert.ok(
 );
 assert.match(phraseSpacedRows.map((row) => row.text).join("|"), /之前在《鬼魂笔记》中/);
 assert.match(phraseSpacedRows.map((row) => row.text).join("|"), /如果 Meg 和 Elizabeth 都死了/);
+assert.ok(phraseSpacedRows.some((row) => row.text === "你会想要活着吗"));
+assert.ok(phraseSpacedRows.some((row) => row.text === "我希望活着"));
 
 const overlappingRows = rowsFromAsrResult({
   segments: [

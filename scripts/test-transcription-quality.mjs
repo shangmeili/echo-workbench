@@ -84,6 +84,19 @@ assert.deepEqual(
 );
 assertWorkbenchQuality(longMixedRows, "mixed Chinese English ASR row repair");
 
+const implicitQuestionRows = normalizeLikeWorkbench(rowsFromAsrResult({
+  segments: [{
+    start: 0,
+    end: 7,
+    text: "你会想要活着吗我希望活着这个可以吗我们现在继续处理",
+  }],
+}, 7));
+assert.deepEqual(
+  implicitQuestionRows.map((row) => row.text),
+  ["你会想要活着吗", "我希望活着", "这个可以吗", "我们现在继续处理"],
+);
+assertWorkbenchQuality(implicitQuestionRows, "implicit Chinese question boundary repair");
+
 const lowercaseEnglishRows = normalizeLikeWorkbench(rowsFromAsrResult({
   text: "yes. maybe you shouldn't be here. this should still become readable subtitle rows.",
 }, 30));
