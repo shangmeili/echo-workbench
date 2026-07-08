@@ -99,6 +99,18 @@ const overlappingSegmentRows = normalizeLikeWorkbench(rowsFromAsrResult({
 }, 300));
 assertWorkbenchQuality(overlappingSegmentRows, "overlapping ASR segment repair");
 
+const orphanCjkLeadInRows = normalizeLikeWorkbench([
+  { id: "a", start: 174.781, end: 180, speaker: "未标注", text: "之前在《鬼魂笔记》中", translation: "" },
+  { id: "b", start: 180, end: 183, speaker: "未标注", text: "为了", translation: "" },
+  { id: "c", start: 183, end: 188, speaker: "未标注", text: "寻找那座桥我们继续调查", translation: "" },
+]);
+assertWorkbenchQuality(orphanCjkLeadInRows, "orphan Chinese lead-in repair");
+assert.deepEqual(
+  orphanCjkLeadInRows.map((row) => row.text),
+  ["之前在《鬼魂笔记》中", "为了寻找那座桥我们继续调查"],
+  `orphan Chinese lead-in should merge into the next row: ${orphanCjkLeadInRows.map((row) => row.text).join(" | ")}`,
+);
+
 const normalizedStringTimes = normalizeReviewRows([
   { id: "string-time", start: "1.25", end: "2.5", speaker: "", text: "字符串时间也要规范化。", translation: "" },
 ]);
@@ -235,6 +247,47 @@ assert.ok(
     && trailingChineseLeadInRows.some((row) => row.text === "最后导出前要再次校验"),
   `trailing Chinese lead-in repair should preserve complete ordered clauses: ${trailingChineseLeadInRows.map((row) => row.text).join(" | ")}`,
 );
+
+const protectedChineseBoundaryCases = [
+  {
+    label: "semantic question boundary",
+    phrase: "我们今天讨论项目上线前的转写质量首先要确认时间轴不能重叠其次要检查断句是否符合语义最后导出字幕前系统应该自动校验",
+    cutA: 28,
+    cutB: 35,
+    rejected: /断句\|是否/,
+    expected: /其次要检查断句是否符合语义/,
+  },
+  {
+    label: "user self-fix boundary",
+    phrase: "视频里的说话人停顿很短但是字幕仍然需要清楚表达每句话不能让用户自己判断哪里应该拆开",
+    cutA: 28,
+    cutB: 31,
+    rejected: /仍然\|需要|不能\|让|用户\|自己|哪里\|应该/,
+    expected: /不能让用户自己判断哪里应该拆开/,
+  },
+  {
+    label: "large paragraph workbench boundary",
+    phrase: "如果转写服务返回一大段没有标点的文本工作台应该自动整理为短句并保留和视频预览同步的时间码",
+    cutA: 7,
+    cutB: 10,
+    rejected: /返\|回|一大\|段|工作台\|应该|自动\|整理/,
+    expected: /返回一大段没有标点的文本/,
+  },
+];
+
+for (const boundaryCase of protectedChineseBoundaryCases) {
+  const rows = normalizeLikeWorkbench(rowsFromAsrResult({
+    segments: [
+      { start: 0, end: 5, text: boundaryCase.phrase.slice(0, boundaryCase.cutA) },
+      { start: 4.7, end: 10, text: boundaryCase.phrase.slice(Math.max(0, boundaryCase.cutA - 2), boundaryCase.cutB) },
+      { start: 9.7, end: 18, text: boundaryCase.phrase.slice(Math.max(0, boundaryCase.cutB - 2)) },
+    ],
+  }, 20));
+  const joined = rows.map((row) => row.text).join("|");
+  assertWorkbenchQuality(rows, `protected Chinese boundary repair: ${boundaryCase.label}`);
+  assert.doesNotMatch(joined, boundaryCase.rejected, `protected Chinese boundary repair should remove bad boundary: ${joined}`);
+  assert.match(joined, boundaryCase.expected, `protected Chinese boundary repair should keep intended phrase: ${joined}`);
+}
 
 const realisticEnglishDialogueRows = normalizeLikeWorkbench(rowsFromAsrResult({
   text: "Previously on The Vampire Diaries You left your son You abandoned your family I was ashamed I had to get out It is beautiful",

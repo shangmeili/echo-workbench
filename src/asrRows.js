@@ -646,6 +646,19 @@ export function rebalanceEnglishSubtitleRowBoundaries(inputRows = []) {
 }
 
 const cjkTrailingLeadInWords = ["首先", "其次", "然后", "所以", "但是", "不过", "可是", "另外", "接着", "最后"];
+const cjkProtectedBoundaryPhrases = [
+  ...protectedCjkSplitPhrases,
+  "返回一大段",
+  "断句是否符合语义",
+  "一大段",
+  "不能让用户自己判断",
+  "用户自己判断",
+  "仍然需要",
+  "哪里应该拆开",
+  "工作台应该",
+  "自动整理",
+  "字幕仍然",
+];
 
 function trailingCjkLeadIn(text) {
   const clean = String(text || "").trim().replace(/[，,、：:；;]+$/g, "");
@@ -711,6 +724,98 @@ export function rebalanceCjkSubtitleRowBoundaries(inputRows = []) {
     };
   }
   return rows;
+}
+
+function cjkProtectedBoundaryMatch(previousText, currentText) {
+  const previous = normalizeAsrText(previousText);
+  const current = normalizeAsrText(currentText);
+  if (!previous || !current) return null;
+
+  for (const phrase of cjkProtectedBoundaryPhrases) {
+    if (!phrase || phrase.length < 3) continue;
+    const minimumPrefixLength = minimumProtectedPhrasePrefixLength(phrase);
+    for (let prefixLength = phrase.length - 1; prefixLength >= minimumPrefixLength; prefixLength -= 1) {
+      const prefix = phrase.slice(0, prefixLength);
+      const rest = phrase.slice(prefixLength);
+      if (!rest || !previous.endsWith(prefix) || !current.startsWith(rest)) continue;
+      return { prefix };
+    }
+  }
+  return null;
+}
+
+function isWeakCjkBoundaryText(text) {
+  return /(不能|只是|而|由|给|和|的|在|成|为|与|或|作为|应该|需要|生成|重新整)$/.test(String(text || "").trim());
+}
+
+export function rebalanceCjkProtectedPhraseBoundaries(inputRows = []) {
+  const result = [];
+  for (const row of inputRows.map((item) => ({ ...item }))) {
+    const previousRow = result.at(-1);
+    if (!previousRow) {
+      result.push(row);
+      continue;
+    }
+
+    if (String(previousRow?.speaker || "未标注") !== String(row?.speaker || "未标注")) {
+      result.push(row);
+      continue;
+    }
+
+    const previousText = String(previousRow?.text || "").trim();
+    const currentText = String(row?.text || "").trim();
+    if (!previousText || !currentText || !/[\u4e00-\u9fa5]/.test(previousText) || !/[\u4e00-\u9fa5]/.test(currentText)) {
+      result.push(row);
+      continue;
+    }
+
+    const match = cjkProtectedBoundaryMatch(previousText, currentText);
+    if (!match) {
+      result.push(row);
+      continue;
+    }
+
+    const movedTextChangedTranslation = Boolean(
+      String(previousRow.translation || "").trim()
+      || String(row.translation || "").trim(),
+    );
+    const mergedText = normalizeAsrText(`${previousText}${currentText}`);
+    const previousMain = normalizeAsrText(previousText.slice(0, -match.prefix.length));
+    const movedCurrentText = normalizeAsrText(`${match.prefix}${currentText}`);
+
+    if (transcriptWeight(mergedText) <= 20 || transcriptWeight(previousMain) < 4) {
+      result[result.length - 1] = {
+        ...previousRow,
+        end: Math.max(finiteNumber(previousRow.end, 0), finiteNumber(row.end, 0)),
+        text: mergedText,
+        originalText: previousRow.originalText === previousText ? mergedText : previousRow.originalText,
+        translation: movedTextChangedTranslation ? "" : [previousRow.translation, row.translation].map((item) => String(item || "").trim()).filter(Boolean).join(" "),
+        reviewStatus: previousRow.reviewStatus === "confirmed" || row.reviewStatus === "confirmed" ? "pending" : previousRow.reviewStatus,
+      };
+      continue;
+    }
+
+    if (isWeakCjkBoundaryText(previousMain)) {
+      result.push(row);
+      continue;
+    }
+
+    result[result.length - 1] = {
+      ...previousRow,
+      text: previousMain,
+      originalText: previousRow.originalText === previousText ? previousMain : previousRow.originalText,
+      translation: movedTextChangedTranslation ? "" : previousRow.translation,
+      reviewStatus: previousRow.reviewStatus === "confirmed" ? "pending" : previousRow.reviewStatus,
+    };
+    result.push({
+      ...row,
+      text: movedCurrentText,
+      originalText: row.originalText === currentText ? movedCurrentText : row.originalText,
+      translation: movedTextChangedTranslation ? "" : row.translation,
+      reviewStatus: row.reviewStatus === "confirmed" ? "pending" : row.reviewStatus,
+    });
+  }
+  return result.filter((row) => String(row?.text || "").trim());
 }
 
 function chooseReadableEnglishSplitIndex(words, maxWords) {
@@ -1661,9 +1766,9 @@ function trimPartialProtectedPhraseSuffix(previousText, currentText) {
 }
 
 function minimumProtectedPhrasePrefixLength(phrase) {
-  if (/^(作为提示|时间轴|不能让|重新整理)/.test(phrase)) return 1;
+  if (/^(作为提示|时间轴|不能让|重新整理|返回)/.test(phrase)) return 1;
   if (/^(源语言|生成可|可校对)/.test(phrase)) return 1;
-  if (/^(普通|时间|合理|用户|交给|转写|只应该|作为源|自动|媒体|原始|并生成|目标语言|语言和目标|不一致时)/.test(phrase)) return 2;
+  if (/^(普通|时间|合理|用户|交给|转写|只应该|作为源|自动|媒体|原始|并生成|目标语言|语言和目标|不一致时|断句|工作台|字幕|仍然|哪里|一大)/.test(phrase)) return 2;
   if (phrase.startsWith("不能")) return 2;
   return 3;
 }

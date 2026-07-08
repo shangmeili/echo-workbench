@@ -1,6 +1,7 @@
 import {
   dedupeAdjacentAsrRows,
   mergeShortAdjacentAsrRows,
+  rebalanceCjkProtectedPhraseBoundaries,
   rebalanceCjkSubtitleRowBoundaries,
   rebalanceEnglishSubtitleRowBoundaries,
   repairAsrTimeline,
@@ -206,7 +207,7 @@ const orphanEnglishLeadWords = new Set([
 ]);
 
 const orphanCjkLeadWords = new Set([
-  "然后", "所以", "但是", "不过", "可是", "因为", "如果", "其实", "就是", "那么", "接着", "另外",
+  "然后", "所以", "但是", "不过", "可是", "因为", "如果", "为了", "其实", "就是", "那么", "接着", "另外",
 ]);
 
 function isOrphanLeadInRow(row) {
@@ -367,9 +368,13 @@ export function repairReviewStructure(inputRows = [], options = {}) {
   const finalDedupeRows = repairAsrTimeline(dedupeAdjacentAsrRows(repairedRows));
   const finalCascadeMergedRows = mergeShortAdjacentAsrRows(finalDedupeRows, { maxGapSeconds: 0.85, maxCombinedDuration: 5.8, ...mergeOptions });
   const finalBaseRows = repairAsrTimeline(dedupeAdjacentAsrRows(finalCascadeMergedRows));
-  const finalReadableRows = rebalanceCjkSubtitleRowBoundaries(repairReadableReviewRows(finalBaseRows).rows);
+  const finalReadableRows = rebalanceCjkProtectedPhraseBoundaries(
+    rebalanceCjkSubtitleRowBoundaries(repairReadableReviewRows(finalBaseRows).rows),
+  );
+  const protectedBoundaryRows = rebalanceCjkProtectedPhraseBoundaries(rebalanceEnglishSubtitleRowBoundaries(finalReadableRows));
+  const finalBoundaryReadableRows = repairReadableReviewRows(repairAsrTimeline(protectedBoundaryRows)).rows;
   const finalRows = fitRowsWithinMaxEnd(
-    repairAsrTimeline(rebalanceEnglishSubtitleRowBoundaries(finalReadableRows)),
+    repairAsrTimeline(rebalanceCjkProtectedPhraseBoundaries(finalBoundaryReadableRows)),
     options.maxEnd,
   );
   const mergedRowCount = Math.max(0, timedRows.length + readableRepair.addedRowCount + finalReadableRepair.addedRowCount + stableReadableRepair.addedRowCount - stableReadableRepair.rows.length);
