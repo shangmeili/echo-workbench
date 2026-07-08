@@ -902,6 +902,10 @@ assert.deepEqual(
   partialChineseDedupedRows.map((row) => row.text),
   ["边界重复句。新的内容。", "第三句。"],
 );
+assert.ok(
+  partialChineseDedupedRows[1].start >= partialChineseDedupedRows[0].end,
+  `trimmed Chinese chunk duplicate should move the next row start out of the previous row: ${JSON.stringify(partialChineseDedupedRows)}`,
+);
 
 const partialEnglishDedupedRows = dedupeAdjacentAsrRows([
   { id: "a", start: 0, end: 2.3, speaker: "未标注", text: "Previously on The Vampire Diaries", translation: "" },
@@ -911,6 +915,10 @@ const partialEnglishDedupedRows = dedupeAdjacentAsrRows([
 assert.deepEqual(
   partialEnglishDedupedRows.map((row) => row.text),
   ["Previously on The Vampire Diaries", "You left your son."],
+);
+assert.ok(
+  partialEnglishDedupedRows[1].start >= partialEnglishDedupedRows[0].end,
+  `trimmed English chunk duplicate should move the next row start out of the previous row: ${JSON.stringify(partialEnglishDedupedRows)}`,
 );
 
 const distantRepeatedRows = dedupeAdjacentAsrRows([

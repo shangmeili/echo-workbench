@@ -1390,6 +1390,16 @@ function trimRepeatedBoundaryPrefix(previousText, currentText) {
   return current;
 }
 
+function rowWithTrimmedBoundaryStart(row, previous, text) {
+  const previousEnd = finiteNumber(previous?.end, finiteNumber(previous?.start, 0));
+  const currentStart = finiteNumber(row?.start, previousEnd);
+  return {
+    ...row,
+    start: Math.max(currentStart, previousEnd),
+    text,
+  };
+}
+
 function trimPartialProtectedPhraseSuffix(previousText, currentText) {
   const previous = normalizeAsrText(previousText);
   const current = normalizeAsrText(currentText);
@@ -1512,7 +1522,7 @@ export function dedupeAdjacentAsrRows(rows, maxGapSeconds = 1.2) {
           };
           continue;
         }
-        result.push({ ...row, text: trimmedText });
+        result.push(rowWithTrimmedBoundaryStart(row, previous, trimmedText));
         continue;
       }
     }
