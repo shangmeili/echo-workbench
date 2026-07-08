@@ -421,6 +421,24 @@ assert.deepEqual(
   ["The U.S. Army reviewed the audio.", "next sentence starts lowercase."],
 );
 
+const translatedLongRowRepair = repairReviewStructure([
+  {
+    id: "translated-long-row",
+    start: 0,
+    end: 12,
+    speaker: "未标注",
+    text: "第一部分内容很长需要拆分第二部分继续补充背景信息第三部分给出结论",
+    originalText: "第一部分内容很长需要拆分第二部分继续补充背景信息第三部分给出结论",
+    translation: "The first part is long and needs splitting. The second part adds background. The third part gives the conclusion.",
+  },
+], { maxEnd: 12 }).rows;
+assert.ok(translatedLongRowRepair.length > 1, "translated long rows should be split for proofreading readability");
+assert.ok(
+  translatedLongRowRepair.every((row) => String(row.translation || "").trim()),
+  `automatic readability repair should keep existing translations aligned: ${translatedLongRowRepair.map((row) => row.translation).join(" | ")}`,
+);
+assertCleanTimeline(translatedLongRowRepair, "translated long row repair");
+
 for (let seed = 1; seed <= 120; seed += 1) {
   const random = seededRandom(seed);
   const rowCount = 3 + Math.floor(random() * 10);

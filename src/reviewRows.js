@@ -59,8 +59,8 @@ function splitReviewRowByReadableText(row) {
   const end = Math.max(start + 0.5, Number(row.end) || start + textParts.length * 1.2);
   const duration = end - start;
   const totalWeight = textParts.reduce((sum, item) => sum + transcriptWeight(item), 0) || textParts.length;
-  const originalParts = row.originalText && row.originalText !== row.text ? splitTranscriptIntoSentences(row.originalText) : textParts;
-  const translationParts = row.translation ? splitTranscriptIntoSentences(row.translation) : [];
+  const originalParts = row.originalText && row.originalText !== row.text ? splitTextIntoPartCount(row.originalText, textParts.length) : textParts;
+  const translationParts = row.translation ? splitTextIntoPartCount(row.translation, textParts.length) : [];
   let cursor = start;
   return textParts.map((part, index) => {
     const isLast = index === textParts.length - 1;
@@ -123,6 +123,61 @@ function joinReviewText(left, right) {
   if (/[\u4e00-\u9fff]$/.test(previous) && /^[\u4e00-\u9fff]/.test(current)) return `${previous}${current}`;
   if (/^[,.;:!?，。！？；：、]/.test(current)) return `${previous}${current}`;
   return `${previous} ${current}`.replace(/\s+([,.;:!?，。！？；：、])/g, "$1").trim();
+}
+
+function splitTextNearMiddle(value) {
+  const text = String(value || "").trim();
+  if (transcriptWeight(text) <= 1) return null;
+  if (/[A-Za-z]/.test(text) && /\s/.test(text) && !/[\u4e00-\u9fa5]/.test(text)) {
+    const words = text.split(/\s+/).filter(Boolean);
+    if (words.length <= 1) return null;
+    const splitIndex = Math.max(1, Math.min(words.length - 1, Math.round(words.length / 2)));
+    return [words.slice(0, splitIndex).join(" "), words.slice(splitIndex).join(" ")];
+  }
+  const chars = Array.from(text);
+  if (chars.length <= 1) return null;
+  let splitIndex = Math.max(1, Math.min(chars.length - 1, Math.round(chars.length / 2)));
+  while (splitIndex < chars.length - 1 && /[，。！？；：、,.!?;:]/.test(chars[splitIndex - 1])) splitIndex += 1;
+  return [chars.slice(0, splitIndex).join("").trim(), chars.slice(splitIndex).join("").trim()].filter(Boolean);
+}
+
+function splitTextIntoPartCount(value, count) {
+  const targetCount = Math.max(0, Number(count) || 0);
+  const text = String(value || "").trim();
+  if (!text || targetCount <= 0) return [];
+  let parts = splitTranscriptIntoSentences(text).filter(Boolean);
+  if (!parts.length) return [];
+
+  while (parts.length > targetCount) {
+    let mergeIndex = parts.length - 2;
+    let bestWeight = Number.POSITIVE_INFINITY;
+    for (let index = 0; index < parts.length - 1; index += 1) {
+      const weight = transcriptWeight(parts[index]) + transcriptWeight(parts[index + 1]);
+      if (weight < bestWeight) {
+        bestWeight = weight;
+        mergeIndex = index;
+      }
+    }
+    parts.splice(mergeIndex, 2, joinReviewText(parts[mergeIndex], parts[mergeIndex + 1]));
+  }
+
+  while (parts.length < targetCount) {
+    let splitIndex = -1;
+    let splitWeight = 0;
+    parts.forEach((part, index) => {
+      const weight = transcriptWeight(part);
+      if (weight > splitWeight) {
+        splitWeight = weight;
+        splitIndex = index;
+      }
+    });
+    if (splitIndex < 0 || splitWeight <= 1) break;
+    const split = splitTextNearMiddle(parts[splitIndex]);
+    if (!split || split.length < 2) break;
+    parts.splice(splitIndex, 1, split[0], split[1]);
+  }
+
+  return parts.length === targetCount ? parts : [];
 }
 
 function reviewSentenceClosed(text) {
