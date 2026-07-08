@@ -349,7 +349,7 @@ const englishBreakBeforeWords = new Set([
 const englishWeakEndingWords = new Set([
   "a", "an", "the", "and", "or", "but", "because", "that", "which", "who", "to", "of",
   "for", "in", "on", "at", "with", "from", "into", "as", "by",
-  "when", "where", "what", "why", "how", "than",
+  "when", "where", "what", "what's", "whats", "why", "how", "than", "before", "after",
   "can", "could", "should", "would", "will", "may", "might", "must", "shall",
   "is", "are", "was", "were", "be", "been", "being", "has", "have", "had",
   "i'm", "you're", "we're", "they're", "he's", "she's", "it's",
@@ -469,6 +469,70 @@ function rebalanceEnglishSubtitleParts(parts, maxWords) {
   }
 
   return rows.map((part) => part.join(" ")).filter(Boolean);
+}
+
+export function rebalanceEnglishSubtitleRowBoundaries(inputRows = []) {
+  const rows = inputRows.map((row) => ({ ...row }));
+  for (let index = 0; index < rows.length - 1; index += 1) {
+    const previousRow = rows[index];
+    const nextRow = rows[index + 1];
+    if (String(previousRow?.speaker || "未标注") !== String(nextRow?.speaker || "未标注")) continue;
+
+    const previousText = String(previousRow?.text || "").trim();
+    const nextText = String(nextRow?.text || "").trim();
+    if (!previousText || !nextText || !isLatinText(previousText) || !isLatinText(nextText)) continue;
+
+    const previousWords = previousText.split(/\s+/).filter(Boolean);
+    const nextWords = nextText.split(/\s+/).filter(Boolean);
+    const relaxedLimit = Math.max(10, maxMergedUnits(`${previousText} ${nextText}`) + 4);
+    const movedWords = [];
+
+    while (
+      movedWords.length < 2
+      && previousWords.length > 4
+      && nextWords.length < relaxedLimit
+      && isWeakEnglishBoundaryEnding(previousWords.at(-1))
+    ) {
+      const movedWord = previousWords.pop();
+      movedWords.unshift(movedWord);
+      nextWords.unshift(movedWord);
+    }
+
+    if (!movedWords.length) continue;
+
+    const previousStart = Number(previousRow.start) || 0;
+    const previousEnd = Number(previousRow.end) || previousStart;
+    const nextStart = Number(nextRow.start) || previousEnd;
+    const nextEnd = Number(nextRow.end) || nextStart;
+    let boundary = Math.max(previousStart + 0.35, Math.min(previousEnd, nextStart));
+    const previousDuration = Math.max(0.35, previousEnd - previousStart);
+    const movedWeight = Math.max(1, transcriptWeight(movedWords.join(" ")));
+    const previousWeight = Math.max(movedWeight + 1, transcriptWeight(previousText));
+    const boundaryShift = Math.min(1.2, Math.max(0.12, previousDuration * (movedWeight / previousWeight)));
+
+    if (Math.abs(nextStart - previousEnd) <= 0.08 && nextEnd - previousStart > 0.9) {
+      boundary = Math.min(
+        nextEnd - 0.35,
+        Math.max(previousStart + 0.35, previousEnd - boundaryShift),
+      );
+    }
+
+    rows[index] = {
+      ...previousRow,
+      end: boundary,
+      text: previousWords.join(" "),
+      originalText: previousRow.originalText === previousText ? previousWords.join(" ") : previousRow.originalText,
+      reviewStatus: previousRow.reviewStatus === "confirmed" ? "pending" : previousRow.reviewStatus,
+    };
+    rows[index + 1] = {
+      ...nextRow,
+      start: boundary,
+      text: nextWords.join(" "),
+      originalText: nextRow.originalText === nextText ? nextWords.join(" ") : nextRow.originalText,
+      reviewStatus: nextRow.reviewStatus === "confirmed" ? "pending" : nextRow.reviewStatus,
+    };
+  }
+  return rows;
 }
 
 function chooseReadableEnglishSplitIndex(words, maxWords) {

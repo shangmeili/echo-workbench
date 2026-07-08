@@ -215,6 +215,32 @@ assert.deepEqual(
   ],
 );
 
+const restoredEnglishBoundaryRows = normalizeLikeWorkbench([
+  { id: "weak-with", start: 0, end: 4.58, speaker: "未标注", text: "So if a photon is directed through a plane with", translation: "" },
+  { id: "weak-with-next", start: 4.58, end: 8.737, speaker: "未标注", text: "two slits in it and either slit is observed,", translation: "" },
+  { id: "weak-before", start: 14.937, end: 19.517, speaker: "未标注", text: "if it's observed after it's left the plane but before", translation: "" },
+  { id: "weak-before-next", start: 19.517, end: 21.559, speaker: "未标注", text: "it hits its target,", translation: "" },
+  { id: "weak-question", start: 21.559, end: 26.139, speaker: "未标注", text: "it will not have gone through both slits. Agreed. What's", translation: "" },
+  { id: "weak-question-next", start: 26.139, end: 27.335, speaker: "未标注", text: "your point?", translation: "" },
+]);
+assertCleanTimeline(restoredEnglishBoundaryRows, "restored English weak boundary repair");
+assert.ok(
+  restoredEnglishBoundaryRows.every((row) => !/\b(with|before|what'?s)$/i.test(String(row.text || "").trim())),
+  `restored English rows should not leave weak boundary words for manual repair: ${restoredEnglishBoundaryRows.map((row) => row.text).join(" | ")}`,
+);
+assert.ok(
+  restoredEnglishBoundaryRows.some((row) => /^with two slits\b/i.test(row.text)),
+  `restored English rows should move with to the following phrase: ${restoredEnglishBoundaryRows.map((row) => row.text).join(" | ")}`,
+);
+assert.ok(
+  restoredEnglishBoundaryRows.some((row) => /before it hits\b/i.test(row.text)),
+  `restored English rows should move before into the following phrase: ${restoredEnglishBoundaryRows.map((row) => row.text).join(" | ")}`,
+);
+assert.ok(
+  restoredEnglishBoundaryRows.some((row) => /^What's your point\?/i.test(row.text)),
+  `restored English rows should keep the question phrase together: ${restoredEnglishBoundaryRows.map((row) => row.text).join(" | ")}`,
+);
+
 const compressedChineseRows = normalizeLikeWorkbench(rowsFromAsrResult({
   segments: [{
     start: 0,
