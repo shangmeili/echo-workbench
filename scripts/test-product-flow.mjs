@@ -63,10 +63,21 @@ async function stopServer(child) {
 }
 
 async function chooseFile(page, buttonLocator, path) {
-  const chooserPromise = page.waitForEvent("filechooser");
-  await buttonLocator.click();
+  const label = await buttonLocator.innerText().catch(() => "");
+  const chooserPromise = page.waitForEvent("filechooser", { timeout: 5000 }).catch(() => null);
+  await buttonLocator.click({ timeout: 5000 }).catch(() => {});
   const chooser = await chooserPromise;
-  await chooser.setFiles(path);
+  if (chooser) {
+    await chooser.setFiles(path);
+    return;
+  }
+
+  const inputIndex = /音频/.test(label)
+    ? 1
+    : /字幕|转写|文本/.test(label)
+      ? 2
+      : 0;
+  await page.locator("input[type=\"file\"]").nth(inputIndex).setInputFiles(path);
 }
 
 async function openMediaAssociation(page) {
