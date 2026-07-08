@@ -534,13 +534,15 @@ async function assertWorkbenchLayout(page, { title, startExpected, hasResults = 
       assert.equal(layout.quickStateSharesActionTitleRow, true, `${title} text-only result state should keep segment/export status in the processing header row`);
     }
     if (layout.hasMediaPreview) {
-      assert.ok(layout.mediaWidth >= 430 && layout.mediaWidth <= 560, `${title} media preview column should stay readable after results exist while slightly reducing the proofreading column, got ${layout.mediaWidth}`);
+      assert.ok(layout.mediaWidth >= 470 && layout.mediaWidth <= 640, `${title} media preview column should stay readable after results exist while slightly reducing the proofreading column, got ${layout.mediaWidth}`);
+      assert.ok(layout.mediaWidth >= layout.editorWidth * 0.96 && layout.mediaWidth <= layout.editorWidth * 1.18, `${title} result-state media and proofreading columns should stay close to balanced with the right side slightly reduced, got media ${layout.mediaWidth}, editor ${layout.editorWidth}`);
+      assert.ok(layout.mediaHeight >= layout.controlHeight * 1.05 && layout.mediaHeight <= layout.controlHeight * 1.55, `${title} result-state media preview should receive slightly more height than processing settings, got media ${layout.mediaHeight}, controls ${layout.controlHeight}`);
     } else if (expectsMediaPanel) {
       const minSummaryWidth = title === "字幕文件翻译" ? 300 : 320;
       assert.ok(layout.mediaWidth >= minSummaryWidth && layout.mediaWidth <= 420, `${title} summary/media column should stay compact, got media column ${layout.mediaWidth}`);
       assert.ok(layout.editorWidth >= 620, `${title} text-only result state should keep a wider proofreading area, got editor ${layout.editorWidth}`);
     }
-    if (expectsMediaPanel) assert.ok(layout.mediaHeight <= 440, `${title} media panel should stay compact after results exist, got ${layout.mediaHeight}`);
+    if (expectsMediaPanel) assert.ok(layout.mediaHeight <= 470, `${title} media panel should stay compact after results exist, got ${layout.mediaHeight}`);
     assert.ok(layout.currentSegmentHeight <= (layout.usesTranslationStack ? 180 : 160), `${title} current segment editor should stay compact enough for long-form proofreading while keeping row tools clickable, got ${layout.currentSegmentHeight}`);
     assert.ok(layout.currentEditTextareaHeight >= 36, `${title} current segment editor should provide a real compact proofreading input, got ${layout.currentEditTextareaHeight}`);
     assert.ok(layout.confirmNextHeight <= 32, `${title} confirm action should be a compact workbench button, got ${layout.confirmNextHeight}`);

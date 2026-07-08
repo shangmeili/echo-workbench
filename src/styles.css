@@ -1411,8 +1411,8 @@ h1 {
 
 .workbench-layout.has-results {
   height: 100%;
-  grid-template-columns: minmax(540px, 0.92fr) minmax(560px, 1.08fr);
-  grid-template-rows: minmax(0, 0.5fr) minmax(0, 0.5fr);
+  grid-template-columns: minmax(560px, 1.02fr) minmax(520px, 0.98fr);
+  grid-template-rows: minmax(0, 0.56fr) minmax(0, 0.44fr);
 }
 
 .workbench-layout.has-results.no-media-results {
@@ -3552,9 +3552,11 @@ h1 {
 .workbench-layout.has-results .subtitle-editor .panel-head {
   flex: 0 0 auto;
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
-  grid-template-areas: "title tools";
-  align-items: center;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-areas:
+    "title"
+    "tools";
+  align-items: start;
   gap: 12px;
 }
 
@@ -3568,10 +3570,11 @@ h1 {
   flex: 1 1 auto;
   display: flex;
   align-items: center;
-  justify-content: flex-end;
+  justify-content: flex-start;
   gap: 7px;
   width: 100%;
   min-width: 0;
+  flex-wrap: wrap;
 }
 
 .editor-tools .secondary {
@@ -3584,8 +3587,8 @@ h1 {
 .subtitle-search {
   height: 36px;
   min-width: 150px;
-  max-width: 260px;
-  flex: 1 1 170px;
+  max-width: 320px;
+  flex: 1 1 220px;
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto auto;
   align-items: center;
@@ -3595,6 +3598,10 @@ h1 {
   border: 1px solid var(--line);
   border-radius: 10px;
   background: #fff;
+}
+
+.workbench-layout.has-results .editor-tools > button.secondary:last-child {
+  margin-left: auto;
 }
 
 .subtitle-search input {
@@ -6410,8 +6417,8 @@ h1 {
   }
 
   .workbench-layout.has-results {
-    grid-template-columns: minmax(500px, 0.92fr) minmax(0, 1.08fr);
-    grid-template-rows: minmax(0, 0.5fr) minmax(0, 0.5fr);
+    grid-template-columns: minmax(520px, 1.02fr) minmax(0, 0.98fr);
+    grid-template-rows: minmax(0, 0.56fr) minmax(0, 0.44fr);
   }
 
   .workbench-layout.has-results.no-media-results {
