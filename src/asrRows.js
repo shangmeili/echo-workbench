@@ -500,6 +500,10 @@ export function rebalanceEnglishSubtitleRowBoundaries(inputRows = []) {
 
     if (!movedWords.length) continue;
 
+    const movedTextChangedTranslation = Boolean(
+      String(previousRow.translation || "").trim()
+      || String(nextRow.translation || "").trim(),
+    );
     const previousStart = Number(previousRow.start) || 0;
     const previousEnd = Number(previousRow.end) || previousStart;
     const nextStart = Number(nextRow.start) || previousEnd;
@@ -522,6 +526,7 @@ export function rebalanceEnglishSubtitleRowBoundaries(inputRows = []) {
       end: boundary,
       text: previousWords.join(" "),
       originalText: previousRow.originalText === previousText ? previousWords.join(" ") : previousRow.originalText,
+      translation: movedTextChangedTranslation ? "" : previousRow.translation,
       reviewStatus: previousRow.reviewStatus === "confirmed" ? "pending" : previousRow.reviewStatus,
     };
     rows[index + 1] = {
@@ -529,6 +534,7 @@ export function rebalanceEnglishSubtitleRowBoundaries(inputRows = []) {
       start: boundary,
       text: nextWords.join(" "),
       originalText: nextRow.originalText === nextText ? nextWords.join(" ") : nextRow.originalText,
+      translation: movedTextChangedTranslation ? "" : nextRow.translation,
       reviewStatus: nextRow.reviewStatus === "confirmed" ? "pending" : nextRow.reviewStatus,
     };
   }

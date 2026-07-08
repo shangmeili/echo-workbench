@@ -22,7 +22,7 @@ const englishDialoguePhrases = [
   "I predict that when it's over you let me and my brother go because this is the only way we can help you",
   "Mystic Falls High School looks exactly the same as when you last saw it and I'm sure you've noticed there's someone missing from this entry",
 ];
-const weakEnglishEndingPattern = /\b(?:and|or|but|because|that|which|who|to|of|for|in|on|at|with|from|into|as|by|when|where|what|why|how|than|can|could|should|would|will|may|might|must|shall|is|are|was|were|be|been|being|has|have|had|i'm|you're|we're|they're|he's|she's|it's|i've|you've|we've|they've|i'll|you'll|we'll|they'll)$/i;
+const weakEnglishEndingPattern = /\b(?:and|or|but|because|that|which|who|to|of|for|in|on|at|with|from|into|as|by|when|where|what|what's|whats|why|how|than|before|after|can|could|should|would|will|may|might|must|shall|is|are|was|were|be|been|being|has|have|had|i'm|you're|we're|they're|he's|she's|it's|i've|you've|we've|they've|i'll|you'll|we'll|they'll)$/i;
 const awkwardEnglishBoundaryPattern = /(sending\|people|when\|you|saw\|it|you've\|noticed|brother\|go|exactly\|the)/i;
 
 function stressScenarios(phrase, cutA, cutB) {

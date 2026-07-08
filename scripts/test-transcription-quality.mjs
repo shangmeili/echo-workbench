@@ -241,6 +241,25 @@ assert.ok(
   `restored English rows should keep the question phrase together: ${restoredEnglishBoundaryRows.map((row) => row.text).join(" | ")}`,
 );
 
+const translatedWeakBoundaryRows = normalizeLikeWorkbench([
+  { id: "translated-left", start: 0, end: 2.8, speaker: "未标注", text: "I can become the Ripper that", translation: "我可以成为那个开膛手", reviewStatus: "confirmed" },
+  { id: "translated-right", start: 2.8, end: 4.6, speaker: "未标注", text: "you want.", translation: "你想要的。", reviewStatus: "confirmed" },
+]);
+assert.deepEqual(
+  translatedWeakBoundaryRows.map((row) => row.text),
+  ["I can become the Ripper", "that you want."],
+  "translated weak boundary repair should move dangling source words before proofreading",
+);
+assert.deepEqual(
+  translatedWeakBoundaryRows.map((row) => row.translation),
+  ["", ""],
+  "translated weak boundary repair should clear stale translations instead of showing mismatched bilingual rows",
+);
+assert.ok(
+  translatedWeakBoundaryRows.every((row) => row.reviewStatus === "pending"),
+  "translated weak boundary repair should reopen affected confirmed rows for review",
+);
+
 const compressedChineseRows = normalizeLikeWorkbench(rowsFromAsrResult({
   segments: [{
     start: 0,
