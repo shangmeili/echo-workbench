@@ -356,9 +356,9 @@ try {
     return new Response(JSON.stringify({
       text: "timestamp words work",
       words: [
-        { word: "timestamp", timestamp: [0, 0.42] },
-        { word: "words", timestamp: [0.46, 0.88] },
-        { word: "work", timestamp: [0.92, 1.3] },
+        { word: "timestamp", timestamp: [0, 420] },
+        { word: "words", timestamp: [460, 880] },
+        { word: "work", timestamp: [920, 1300] },
       ],
     }), {
       status: 200,
@@ -383,7 +383,7 @@ try {
   assert.deepEqual(
     rowsFromAsrResult(whisperTimestampResult, 3).map((row) => ({ start: row.start, end: row.end, text: row.text })),
     [{ start: 0, end: 1.3, text: "timestamp words work" }],
-    "word timestamp-array ASR responses should keep provider timing",
+    "word millisecond timestamp-array ASR responses should be normalized to seconds",
   );
 
   globalThis.fetch = async (url, options = {}) => {

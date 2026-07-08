@@ -454,6 +454,21 @@ assert.deepEqual(
   "word-level timestamp arrays should preserve provider timing",
 );
 
+const millisecondTimestampWordRows = rowsFromAsrResult({
+  words: [
+    { word: "Millisecond", timestamp: [0, 350] },
+    { word: "words", timestamp: [400, 750] },
+    { word: "keep", timestamp: [800, 1050] },
+    { word: "timing.", timestamp: [1100, 1550] },
+  ],
+}, 3);
+
+assert.deepEqual(
+  millisecondTimestampWordRows.map((row) => ({ start: row.start, end: row.end, text: row.text })),
+  [{ start: 0, end: 1.55, text: "Millisecond words keep timing." }],
+  "word-level millisecond timestamp arrays should be normalized to seconds",
+);
+
 const segmentRows = rowsFromAsrResult({
   segments: [
     { start_time: 0, end_time: 2.4, speaker_label: "S1", transcript: "第一段转写" },
@@ -483,6 +498,22 @@ assert.deepEqual(
     { start: 1.25, end: 2.9, text: "Timestamp segment two." },
   ],
   "ASR rows should preserve timestamp-array segment timing",
+);
+
+const millisecondTimestampSegmentRows = rowsFromAsrResult({
+  segments: [
+    { timestamp: [0, 1250], text: "Millisecond segment one." },
+    { timestamp: [1250, 2900], text: "Millisecond segment two." },
+  ],
+}, 5);
+
+assert.deepEqual(
+  millisecondTimestampSegmentRows.map((row) => ({ start: row.start, end: row.end, text: row.text })),
+  [
+    { start: 0, end: 1.25, text: "Millisecond segment one." },
+    { start: 1.25, end: 2.9, text: "Millisecond segment two." },
+  ],
+  "segment-level millisecond timestamp arrays should be normalized to seconds",
 );
 
 const longSegmentRows = rowsFromAsrResult({

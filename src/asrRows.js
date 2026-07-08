@@ -776,6 +776,39 @@ function timestampPair(item) {
   return [timestamp[0], timestamp[1]];
 }
 
+function rawTimedItemEnd(item) {
+  const [, timestampEnd] = timestampPair(item);
+  return finiteNumber(item?.end ?? item?.end_time ?? item?.endTime ?? timestampEnd, 0);
+}
+
+function timingScaleForItems(items = [], fallbackDuration = 0) {
+  const duration = Number(fallbackDuration) || 0;
+  if (!duration) return 1;
+  const maxEnd = Math.max(...items.map((item) => rawTimedItemEnd(item)), 0);
+  return maxEnd > duration * 20 ? 0.001 : 1;
+}
+
+function scaleTimedValue(value, scale) {
+  const number = Number(value);
+  return Number.isFinite(number) ? number * scale : value;
+}
+
+function scaleTimedItems(items = [], scale = 1, options = {}) {
+  if (scale === 1) return items;
+  const scaleExplicitFields = options.scaleExplicitFields ?? true;
+  return items.map((item) => {
+    const next = { ...item };
+    if (scaleExplicitFields) {
+      for (const key of ["start", "end", "start_time", "end_time", "startTime", "endTime"]) {
+        if (next[key] !== undefined) next[key] = scaleTimedValue(next[key], scale);
+      }
+    }
+    if (Array.isArray(next.timestamp)) next.timestamp = next.timestamp.map((value) => scaleTimedValue(value, scale));
+    if (Array.isArray(next.timestamps)) next.timestamps = next.timestamps.map((value) => scaleTimedValue(value, scale));
+    return next;
+  });
+}
+
 function wordStart(item) {
   const [timestampStart] = timestampPair(item);
   return finiteNumber(item?.start ?? item?.start_time ?? item?.startTime ?? timestampStart, 0);
@@ -1164,11 +1197,13 @@ export function mergeShortAdjacentAsrRows(rows, options = {}) {
 
 export function rowsFromAsrResult(result, fallbackDuration = 0) {
   if (Array.isArray(result?.segments) && result.segments.length) {
-    const rows = result.segments.flatMap((segment, index) => rowsFromSegment(segment, index));
+    const segments = scaleTimedItems(result.segments, timingScaleForItems(result.segments, fallbackDuration), { scaleExplicitFields: false });
+    const rows = segments.flatMap((segment, index) => rowsFromSegment(segment, index));
     return repairCoarseSegmentTiming(rows, fallbackDuration);
   }
   if (Array.isArray(result?.words) && result.words.length) {
-    const rows = repairAsrTimeline(groupWordsToRows(result.words));
+    const words = scaleTimedItems(result.words, timingScaleForItems(result.words, fallbackDuration));
+    const rows = repairAsrTimeline(groupWordsToRows(words));
     if (rows.length) return rows;
   }
   const sentences = splitTranscriptIntoSentences(result?.text || result?.transcript || "");
