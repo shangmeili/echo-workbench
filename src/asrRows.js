@@ -28,6 +28,7 @@ const phraseBreakBeforePatterns = [
   "需要", "应该", "可以", "可能", "其实", "就是", "就像", "那么", "总之", "换句话说",
   "不要",
   "好的", "而是", "而不是", "也要", "系统", "这部分", "源语言", "目标语言", "翻译", "校对窗口", "按钮",
+  "并生成", "不能让",
   "是的", "不是",
   "用户", "你会", "我会", "我们", "他们", "她们", "它们", "这个", "那个", "这些", "那些", "这里", "那里",
   "上一条", "下一条", "前一条", "后一条",
@@ -49,6 +50,7 @@ const phraseStrongBreakBeforePatterns = new Set([
   "需要", "应该", "可以", "可能", "其实", "就是", "就像", "那么", "总之", "换句话说",
   "不要",
   "好的", "而是", "而不是", "也要", "系统", "这部分", "源语言", "目标语言", "翻译", "校对窗口", "按钮",
+  "并生成", "不能让",
   "是的", "不是", "用户", "你会", "我会", "我知道", "我觉得", "我以为", "我想", "我要", "我不", "我希望",
   "你知道", "你觉得", "你想", "你要", "你不", "是不是",
   "第一个", "第二个", "第三个", "第四个", "第一点", "第二点", "第三点", "第四点",
@@ -66,6 +68,7 @@ const implicitBreakBeforePatterns = [
   "同时", "并且", "以及", "为了", "接着", "另外", "最后", "首先", "为什么",
   "需要", "应该", "可以", "可能", "其实", "就是", "就像", "那么", "总之", "换句话说",
   "好的", "也要", "不要", "系统", "用户",
+  "并生成", "不能让",
   "你会", "我会", "我知道", "我觉得", "我以为", "我想", "我要", "我不", "我希望",
   "你知道", "你觉得", "你想", "你要", "你不",
   "第一个", "第二个", "第三个", "第四个", "第一点", "第二点", "第三点", "第四点", "也不应该",
@@ -97,6 +100,14 @@ const protectedCjkSplitPhrases = [
   "源语言和目标语言", "源语言和目标语言不一致", "时间码可能", "模型配置测试失败",
   "普通用户无法判断", "需要说明具体原因", "功能问题自动修复", "媒体预览和当前段落",
   "源语言和目标语言应该保持在同一行",
+  "字幕文件翻译应该保留原始时间码", "原始时间码并生成目标语言字幕",
+  "原始时间码", "保留原始时间码并生成目标语言字幕", "并生成目标语言字幕",
+  "目标语言字幕不能让用户重新整理时间轴", "不能让用户重新整理时间轴", "重新整理时间轴",
+  "不应该作为提示由用户解决", "视频智能字幕需要先生成", "需要先生成可校对的转写文本",
+  "生成可校对的转写文本", "可校对的转写文本", "目标语言不一致", "语言和目标语言不一致",
+  "只应该作为源语言和目标语言不一致", "作为源语言和目标语言不一致",
+  "源语言和目标语言不一致时的附加功能", "自动修复", "可以自动修复", "导入阶段自动修复",
+  "媒体预览", "恢复媒体预览和当前段落",
   "上传视频后应该直接可以开始转写", "开始转写", "时间重叠也不应该",
   "时间轴重叠", "恢复成开始转写页面", "作为提示由用户解决", "交给用户自己处理", "用户自己处理",
   "校对界面", "应该回到校对界面", "从本地副本打开继续处理",
@@ -123,6 +134,7 @@ function isProtectedCjkPatternBoundary(value, index, pattern) {
   if (pattern === "应该" && text[index - 1] === "后") return true;
   if (pattern === "应该" && text[index - 1] === "只") return true;
   if (pattern === "应该" && text.slice(index - 4, index) === "目标语言") return true;
+  if (pattern === "应该" && text.slice(index - 6, index) === "字幕文件翻译") return true;
   if (pattern === "可能" && text.slice(index - 3, index) === "时间码") return true;
   if (pattern === "也不应该" && text.slice(index - 4, index) === "时间重叠") return true;
   if (pattern === "可以" && text[index - 1] === "不") return true;
@@ -1000,7 +1012,7 @@ function isEnglishLeadInFragment(text) {
 
 function isWeakCjkContinuationFragment(text) {
   const clean = normalizeAsrText(text);
-  return /[\u4e00-\u9fa5]/.test(clean) && /(作为|不能|需要|应该|以及|和|与|或|交给|恢复成|时的)$/.test(clean);
+  return /[\u4e00-\u9fa5]/.test(clean) && /(作为|不能|需要|应该|不应该|以及|和|与|或|交给|恢复成|时的|生成|重新整)$/.test(clean);
 }
 
 function startsLikelyNewSubtitleClause(previous, current) {
@@ -1188,7 +1200,11 @@ function trimCompactRepeatedBoundaryPrefix(previousText, currentText) {
   const previous = compactOverlapText(previousText);
   const current = compactOverlapText(currentText);
   const maxOverlap = Math.min(previous.length, current.length, 24);
-  for (let size = maxOverlap; size >= 4; size -= 1) {
+  const minOverlap = /[\u4e00-\u9fa5]/.test(normalizeAsrText(previousText))
+    && /[\u4e00-\u9fa5]/.test(normalizeAsrText(currentText))
+    ? 2
+    : 4;
+  for (let size = maxOverlap; size >= minOverlap; size -= 1) {
     const overlap = previous.slice(-size);
     if (current.slice(0, size) !== overlap) continue;
     return removeCompactPrefix(currentText, overlap);
@@ -1233,8 +1249,9 @@ function trimPartialProtectedPhraseSuffix(previousText, currentText) {
 }
 
 function minimumProtectedPhrasePrefixLength(phrase) {
-  if (/^(作为提示|时间轴)/.test(phrase)) return 1;
-  if (/^(普通|时间|合理|源语言|用户|交给)/.test(phrase)) return 2;
+  if (/^(作为提示|时间轴|不能让|重新整理)/.test(phrase)) return 1;
+  if (/^(源语言|生成可|可校对)/.test(phrase)) return 1;
+  if (/^(普通|时间|合理|用户|交给|转写|只应该|作为源|自动|媒体|原始|并生成|目标语言|语言和目标|不一致时)/.test(phrase)) return 2;
   if (phrase.startsWith("不能")) return 2;
   return 3;
 }
@@ -1254,8 +1271,9 @@ function repairProtectedPhraseAcrossBoundary(previousText, currentText) {
       if (!rest) continue;
       const restIndex = current.indexOf(rest);
       if (restIndex < 0 || restIndex > 4) continue;
+      const repairedPreviousText = normalizeAsrText(`${previous.slice(0, -prefix.length)}${phrase}`);
       return {
-        previousText: normalizeAsrText(`${previous.slice(0, -prefix.length)}${phrase}`),
+        previousText: repairedPreviousText,
         currentText: normalizeAsrText(current.slice(restIndex + rest.length)),
       };
     }

@@ -251,7 +251,11 @@ export function repairReviewStructure(inputRows = [], options = {}) {
     stableShouldPreserveBoundedTiming ? stableTimelineRows : stablePressureRows,
     options.maxEnd,
   );
-  const finalRows = fitRowsWithinMaxEnd(repairAsrTimeline(dedupeAdjacentAsrRows(repairedRows)), options.maxEnd);
+  const finalDedupeRows = repairAsrTimeline(dedupeAdjacentAsrRows(repairedRows));
+  const finalCascadeMergedRows = mergeShortAdjacentAsrRows(finalDedupeRows, { maxGapSeconds: 0.85, maxCombinedDuration: 5.8, ...mergeOptions });
+  const finalBaseRows = repairAsrTimeline(dedupeAdjacentAsrRows(finalCascadeMergedRows));
+  const finalReadableRows = repairReadableReviewRows(finalBaseRows).rows;
+  const finalRows = fitRowsWithinMaxEnd(repairAsrTimeline(finalReadableRows), options.maxEnd);
   const mergedRowCount = Math.max(0, timedRows.length + readableRepair.addedRowCount + finalReadableRepair.addedRowCount + stableReadableRepair.addedRowCount - stableReadableRepair.rows.length);
   return {
     splitRowCount: readableRepair.splitRowCount + finalReadableRepair.splitRowCount + stableReadableRepair.splitRowCount,
