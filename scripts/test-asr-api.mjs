@@ -474,6 +474,50 @@ try {
   assert.equal(requests.length, 15);
   assert.equal(nimResult.segments.length, 1);
 
+  globalThis.fetch = async (url, options = {}) => {
+    const body = options.body;
+    assert.equal(url, "https://chunked-asr.example.test/v1/audio/transcriptions");
+    assert.equal(options.method, "POST");
+    assert.equal(options.headers.Authorization, "Bearer chunk-test-token");
+    assert.equal(body.get("model"), "chunked-whisper");
+    requests.push({ url, model: body.get("model"), mode: "chunked-asr" });
+
+    return new Response(JSON.stringify({
+      text: "Chunk one keeps timing. Chunk two keeps timing.",
+      chunks: [
+        { timestamp: [0, 1.4], text: "Chunk one keeps timing." },
+        { timestamp: [1.4, 3.2], text: "Chunk two keeps timing." },
+      ],
+    }), {
+      status: 200,
+      headers: { "Content-Type": "application/json; charset=utf-8" },
+    });
+  };
+
+  const chunkedResult = await transcribeWithNvidia({
+    provider: {
+      transport: "nvidia-http",
+      endpoint: "https://chunked-asr.example.test/v1/audio/transcriptions",
+      model: "chunked-whisper",
+      apiKey: "chunk-test-token",
+      languageCode: "en",
+      sendModel: true,
+    },
+    file: tinyWavBuffer(),
+    fileName: "chunked-whisper-test.wav",
+  });
+
+  assert.equal(requests.length, 16);
+  assert.equal(chunkedResult.segments.length, 2);
+  assert.deepEqual(
+    rowsFromAsrResult(chunkedResult, 5).map((row) => ({ start: row.start, end: row.end, text: row.text })),
+    [
+      { start: 0, end: 1.4, text: "Chunk one keeps timing." },
+      { start: 1.4, end: 3.2, text: "Chunk two keeps timing." },
+    ],
+    "chunk/timestamp ASR responses should keep provider timing instead of falling back to untimed plain text",
+  );
+
   const qwenDashScopeRequestCount = requests.length;
   globalThis.fetch = async (url, options = {}) => {
     requests.push({ url, method: options.method });

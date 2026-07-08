@@ -867,14 +867,25 @@ function segmentText(segment) {
   return normalizeAsrText(rawSegmentText(segment));
 }
 
+function segmentTimestampPair(segment) {
+  const timestamp = Array.isArray(segment?.timestamp)
+    ? segment.timestamp
+    : Array.isArray(segment?.timestamps)
+      ? segment.timestamps
+      : null;
+  if (!timestamp) return [];
+  return [timestamp[0], timestamp[1]];
+}
+
 function rowsFromSegment(segment, segmentIndex) {
   const rawText = rawSegmentText(segment);
   const text = normalizeAsrText(rawText);
   if (!text) return [];
-  const start = finiteNumber(segment?.start ?? segment?.start_time ?? segment?.startTime, segmentIndex * 3);
+  const [timestampStart, timestampEnd] = segmentTimestampPair(segment);
+  const start = finiteNumber(segment?.start ?? segment?.start_time ?? segment?.startTime ?? timestampStart, segmentIndex * 3);
   const inferredEnd = start + Math.max(transcriptWeight(text) * 0.22, 2);
   const explicitEnd = segment?.end ?? segment?.end_time ?? segment?.endTime;
-  const rawEnd = finiteNumber(explicitEnd, inferredEnd);
+  const rawEnd = finiteNumber(explicitEnd ?? timestampEnd, inferredEnd);
   const end = Math.max(start + (explicitEnd == null ? 0.5 : 0.35), rawEnd);
   const speaker = segment.speaker || segment.speaker_label || "未标注";
   const sentences = splitTranscriptIntoSentences(rawText);

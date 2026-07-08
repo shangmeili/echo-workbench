@@ -454,6 +454,22 @@ assert.deepEqual(
   ],
 );
 
+const timestampSegmentRows = rowsFromAsrResult({
+  segments: [
+    { timestamp: [0, 1.25], text: "Timestamp segment one." },
+    { timestamp: [1.25, 2.9], text: "Timestamp segment two." },
+  ],
+}, 5);
+
+assert.deepEqual(
+  timestampSegmentRows.map((row) => ({ start: row.start, end: row.end, text: row.text })),
+  [
+    { start: 0, end: 1.25, text: "Timestamp segment one." },
+    { start: 1.25, end: 2.9, text: "Timestamp segment two." },
+  ],
+  "ASR rows should preserve timestamp-array segment timing",
+);
+
 const longSegmentRows = rowsFromAsrResult({
   segments: [
     {

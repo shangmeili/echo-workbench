@@ -880,6 +880,13 @@ function firstString(...values) {
   return "";
 }
 
+function firstArray(...values) {
+  for (const value of values) {
+    if (Array.isArray(value)) return value;
+  }
+  return [];
+}
+
 function normalizeGenericAsrResponse(data = {}, provider = "nvidia-http") {
   const output = data.output && typeof data.output === "object" ? data.output : {};
   const nestedData = data.data && typeof data.data === "object" ? data.data : {};
@@ -894,24 +901,21 @@ function normalizeGenericAsrResponse(data = {}, provider = "nvidia-http") {
     nestedData.transcript,
     nestedData.transcription,
   );
-  const segments = Array.isArray(data.segments)
-    ? data.segments
-    : Array.isArray(data.results)
-      ? data.results
-      : Array.isArray(output.segments)
-        ? output.segments
-        : Array.isArray(output.results)
-          ? output.results
-          : Array.isArray(nestedData.segments)
-            ? nestedData.segments
-            : [];
-  const words = Array.isArray(data.words)
-    ? data.words
-    : Array.isArray(output.words)
-      ? output.words
-      : Array.isArray(nestedData.words)
-        ? nestedData.words
-        : [];
+  const segments = firstArray(
+    data.segments,
+    data.results,
+    data.chunks,
+    data.sentences,
+    output.segments,
+    output.results,
+    output.chunks,
+    output.sentences,
+    nestedData.segments,
+    nestedData.results,
+    nestedData.chunks,
+    nestedData.sentences,
+  );
+  const words = firstArray(data.words, output.words, nestedData.words);
   return { text, segments, words, provider };
 }
 
