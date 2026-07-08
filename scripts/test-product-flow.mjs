@@ -535,7 +535,7 @@ async function assertWorkbenchLayout(page, { title, startExpected, hasResults = 
     }
     if (layout.hasMediaPreview) {
       assert.ok(layout.mediaWidth >= 470 && layout.mediaWidth <= 640, `${title} media preview column should stay readable after results exist while slightly reducing the proofreading column, got ${layout.mediaWidth}`);
-      assert.ok(layout.mediaWidth >= layout.editorWidth * 0.96 && layout.mediaWidth <= layout.editorWidth * 1.18, `${title} result-state media and proofreading columns should stay close to balanced with the right side slightly reduced, got media ${layout.mediaWidth}, editor ${layout.editorWidth}`);
+      assert.ok(layout.mediaWidth >= layout.editorWidth * 1.08 && layout.mediaWidth <= layout.editorWidth * 1.32, `${title} result-state media and proofreading columns should stay close to balanced with the right side slightly reduced, got media ${layout.mediaWidth}, editor ${layout.editorWidth}`);
       assert.ok(layout.mediaHeight >= layout.controlHeight * 1.05 && layout.mediaHeight <= layout.controlHeight * 1.55, `${title} result-state media preview should receive slightly more height than processing settings, got media ${layout.mediaHeight}, controls ${layout.controlHeight}`);
     } else if (expectsMediaPanel) {
       const minSummaryWidth = title === "字幕文件翻译" ? 300 : 320;

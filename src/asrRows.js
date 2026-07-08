@@ -1732,6 +1732,7 @@ function trimRepeatedBoundaryPrefix(previousText, currentText) {
     if (latinTrimmed !== null) return latinTrimmed;
   }
 
+  if (isLatinText(previous) && isLatinText(current)) return current;
   const compactTrimmed = trimCompactRepeatedBoundaryPrefix(previous, current);
   if (compactTrimmed !== null) return compactTrimmed;
   return current;

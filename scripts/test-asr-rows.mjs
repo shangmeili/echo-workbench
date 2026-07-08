@@ -995,6 +995,16 @@ assert.ok(
   `trimmed English chunk duplicate should move the next row start out of the previous row: ${JSON.stringify(partialEnglishDedupedRows)}`,
 );
 
+const englishStemCollisionRows = dedupeAdjacentAsrRows([
+  { id: "a", start: 0, end: 2.3, speaker: "未标注", text: "It's not crazy. It's a paradox.", translation: "" },
+  { id: "b", start: 2.3, end: 5.1, speaker: "未标注", text: "Paradoxes are part of nature. Think about light. Now,", translation: "" },
+]);
+assert.deepEqual(
+  englishStemCollisionRows.map((row) => row.text),
+  ["It's not crazy. It's a paradox.", "Paradoxes are part of nature. Think about light. Now,"],
+  "English de-duplication should not trim similar word stems such as paradox/paradoxes",
+);
+
 const distantRepeatedRows = dedupeAdjacentAsrRows([
   { id: "a", start: 0, end: 2.3, speaker: "未标注", text: "The Vampire Diaries", translation: "" },
   { id: "b", start: 8, end: 10, speaker: "未标注", text: "The Vampire Diaries continues.", translation: "" },

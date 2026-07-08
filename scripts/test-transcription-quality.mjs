@@ -655,6 +655,29 @@ assert.ok(
 );
 assertCleanTimeline(translatedLongRowRepair, "translated long row repair");
 
+const realEnglishBoundaryRepair = repairReviewStructure([
+  { id: "real-en-1", start: 680.005, end: 682.947, speaker: "未标注", text: "it's not crazy. It's a paradox.", translation: "" },
+  { id: "real-en-2", start: 682.947, end: 686.219, speaker: "未标注", text: "Paradoxes are part of nature. Think about light. Now,", translation: "" },
+  { id: "real-en-3", start: 686.219, end: 689.532, speaker: "未标注", text: "if you look at Huygens,light is a wave,", translation: "" },
+  { id: "real-en-4", start: 935.201, end: 936.489, speaker: "未标注", text: "Oh,", translation: "" },
+  { id: "real-en-5", start: 936.489, end: 939.923, speaker: "未标注", text: "I'll probably say yes. It's just not the kind", translation: "" },
+  { id: "real-en-6", start: 939.923, end: 944.138, speaker: "未标注", text: "of thing you ask a guy you just met. Wow.", translation: "" },
+], { maxEnd: 945 }).rows;
+const realEnglishBoundarySecondPass = repairReviewStructure(realEnglishBoundaryRepair, { maxEnd: 945 }).rows;
+assert.deepEqual(
+  realEnglishBoundaryRepair.map((row) => row.text),
+  realEnglishBoundarySecondPass.map((row) => row.text),
+  "real English boundary repair should be stable after one workbench pass",
+);
+assert.ok(
+  realEnglishBoundaryRepair.some((row) => row.text === "Paradoxes are part of nature. Think about light. Now,"),
+  `real English boundary repair should not trim Paradoxes into a suffix: ${realEnglishBoundaryRepair.map((row) => row.text).join(" | ")}`,
+);
+assert.ok(
+  realEnglishBoundaryRepair.some((row) => row.text === "Oh, I'll probably say yes. It's just not the kind"),
+  `real English short interjections should merge forward before proofreading: ${realEnglishBoundaryRepair.map((row) => row.text).join(" | ")}`,
+);
+
 for (let seed = 1; seed <= 120; seed += 1) {
   const random = seededRandom(seed);
   const rowCount = 3 + Math.floor(random() * 10);

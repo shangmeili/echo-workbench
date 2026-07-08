@@ -1411,7 +1411,7 @@ h1 {
 
 .workbench-layout.has-results {
   height: 100%;
-  grid-template-columns: minmax(578px, 1.06fr) minmax(505px, 0.94fr);
+  grid-template-columns: minmax(585px, 1.09fr) minmax(490px, 0.91fr);
   grid-template-rows: minmax(0, 0.575fr) minmax(0, 0.425fr);
 }
 
@@ -4632,7 +4632,7 @@ h1 {
 
 .workbench-layout.has-results .current-segment-card {
   margin: 8px 12px;
-  padding: 9px 12px;
+  padding: 8px 10px;
 }
 
 .workbench-layout.has-results .current-segment-main,
@@ -4643,7 +4643,7 @@ h1 {
     "meta controls"
     "source source"
     "translation translation";
-  gap: 8px 12px;
+  gap: 6px 10px;
   align-items: start;
 }
 
@@ -6417,7 +6417,7 @@ h1 {
   }
 
   .workbench-layout.has-results {
-    grid-template-columns: minmax(524px, 1.03fr) minmax(0, 0.97fr);
+    grid-template-columns: minmax(540px, 1.09fr) minmax(0, 0.91fr);
     grid-template-rows: minmax(0, 0.565fr) minmax(0, 0.435fr);
   }
 

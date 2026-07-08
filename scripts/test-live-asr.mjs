@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { basename, extname, join } from "node:path";
 import { spawn } from "node:child_process";
 import { detectTranscriptionQualityIssue, rowsFromAsrResult, transcriptWeight } from "../src/asrRows.js";
-import { getSubtitleQualityHints, repairReviewStructure, repairReviewStructurePreservingEmpty } from "../src/reviewRows.js";
+import { getSubtitleQualityHints, hasTimingExportIssue, repairReviewStructure, repairReviewStructurePreservingEmpty } from "../src/reviewRows.js";
 
 function usage() {
   return [
@@ -203,14 +203,20 @@ function applySampleProfile(args) {
   if (!args.expect) args.expect = "回响工作台";
 }
 
-function assertWorkbenchRows(rows, label) {
+function assertWorkbenchRows(rows, label, options = {}) {
   assert.ok(rows.length > 0, `${label}: no editable rows after workbench repair`);
   rows.forEach((row, index) => {
     const hints = getSubtitleQualityHints(row, rows[index + 1]);
     assert.deepEqual(hints, [], `${label}: row ${index + 1} still has structural quality hints: ${hints.join("、")} / ${row.text}`);
   });
-  const secondPass = repairReviewStructure(rows).rows;
+  const secondPass = repairReviewStructure(rows, options).rows;
   assert.equal(secondPass.length, rows.length, `${label}: rows still contain mergeable fragments after repair`);
+  assert.deepEqual(
+    secondPass.map((row) => row.text),
+    rows.map((row) => row.text),
+    `${label}: second structural pass should not change editable text`,
+  );
+  assert.equal(hasTimingExportIssue(secondPass), false, `${label}: second structural pass still has export-blocking timing issues`);
 }
 
 function providerEnvKeyNames({ transport, endpoint }) {
@@ -321,7 +327,7 @@ try {
   assert.ok(totalWeight >= minChars, `live ASR transcript is too short: ${totalWeight}`);
   const qualityIssue = detectTranscriptionQualityIssue(workbenchRows, sourceLanguageLabel(args.language), duration);
   assert.equal(qualityIssue, "", qualityIssue);
-  assertWorkbenchRows(workbenchRows, "live ASR workbench rows");
+  assertWorkbenchRows(workbenchRows, "live ASR workbench rows", { maxEnd: duration });
 
   console.log(JSON.stringify({
     ok: true,

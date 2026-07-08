@@ -345,6 +345,39 @@ function repairTimingPressureRows(inputRows = []) {
   });
 }
 
+function rebalanceSubtitleBoundaries(inputRows = []) {
+  return rebalanceCjkProtectedPhraseBoundaries(
+    rebalanceEnglishSubtitleRowBoundaries(
+      rebalanceCjkSubtitleRowBoundaries(
+        repairReadableReviewRows(repairAsrTimeline(inputRows)).rows,
+      ),
+    ),
+  );
+}
+
+function sameReviewTexts(leftRows = [], rightRows = []) {
+  if (leftRows.length !== rightRows.length) return false;
+  return leftRows.every((row, index) => (
+    String(row.text || "") === String(rightRows[index]?.text || "")
+    && String(row.translation || "") === String(rightRows[index]?.translation || "")
+  ));
+}
+
+function stabilizeSubtitleBoundaries(inputRows = [], mergeOptions = {}) {
+  let rows = repairAsrTimeline(inputRows);
+  for (let pass = 0; pass < 3; pass += 1) {
+    const boundaryRows = rebalanceSubtitleBoundaries(rows);
+    const mergedRows = mergeShortAdjacentAsrRows(
+      repairAsrTimeline(boundaryRows),
+      { maxGapSeconds: 0.85, maxCombinedDuration: 5.8, ...mergeOptions },
+    );
+    const nextRows = repairAsrTimeline(repairReadableReviewRows(mergedRows).rows);
+    if (sameReviewTexts(rows, nextRows)) return nextRows;
+    rows = nextRows;
+  }
+  return rows;
+}
+
 export function repairReviewStructure(inputRows = [], options = {}) {
   const boundedEnd = Number(options.maxEnd) || 0;
   const timedRows = repairAsrTimeline(dedupeAdjacentAsrRows(inputRows));
@@ -381,15 +414,7 @@ export function repairReviewStructure(inputRows = [], options = {}) {
   const finalDedupeRows = repairAsrTimeline(dedupeAdjacentAsrRows(repairedRows));
   const finalCascadeMergedRows = mergeShortAdjacentAsrRows(finalDedupeRows, { maxGapSeconds: 0.85, maxCombinedDuration: 5.8, ...mergeOptions });
   const finalBaseRows = repairAsrTimeline(dedupeAdjacentAsrRows(finalCascadeMergedRows));
-  const finalReadableRows = rebalanceCjkProtectedPhraseBoundaries(
-    rebalanceCjkSubtitleRowBoundaries(repairReadableReviewRows(finalBaseRows).rows),
-  );
-  const protectedBoundaryRows = rebalanceCjkProtectedPhraseBoundaries(rebalanceEnglishSubtitleRowBoundaries(finalReadableRows));
-  const finalBoundaryReadableRows = repairReadableReviewRows(repairAsrTimeline(protectedBoundaryRows)).rows;
-  const finalRows = fitRowsWithinMaxEnd(
-    repairAsrTimeline(rebalanceCjkProtectedPhraseBoundaries(finalBoundaryReadableRows)),
-    options.maxEnd,
-  );
+  const finalRows = fitRowsWithinMaxEnd(stabilizeSubtitleBoundaries(finalBaseRows, mergeOptions), options.maxEnd);
   const mergedRowCount = Math.max(0, timedRows.length + readableRepair.addedRowCount + finalReadableRepair.addedRowCount + stableReadableRepair.addedRowCount - stableReadableRepair.rows.length);
   return {
     splitRowCount: readableRepair.splitRowCount + finalReadableRepair.splitRowCount + stableReadableRepair.splitRowCount,
