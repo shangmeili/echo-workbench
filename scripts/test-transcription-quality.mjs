@@ -199,6 +199,43 @@ assert.ok(
   `realistic Chinese workflow rows should not leave dangling helper words: ${realisticChineseWorkflowRows.map((row) => row.text).join(" | ")}`,
 );
 
+const sequentialChineseMeetingRows = normalizeLikeWorkbench(rowsFromAsrResult({
+  text: "今天我们讨论视频转写平台的质量问题首先时间轴不能重叠其次断句要符合语义如果模型返回很长的段落系统应该自动拆分最后导出前要再次校验",
+}, 28));
+assertWorkbenchQuality(sequentialChineseMeetingRows, "sequential Chinese meeting repair");
+assert.deepEqual(
+  sequentialChineseMeetingRows.map((row) => row.text),
+  [
+    "今天我们讨论视频转写平台的质量问题",
+    "首先时间轴不能重叠",
+    "其次断句要符合语义",
+    "如果模型返回很长的段落",
+    "系统应该自动拆分",
+    "最后导出前要再次校验",
+  ],
+);
+
+const trailingChineseLeadInRows = normalizeLikeWorkbench(rowsFromAsrResult({
+  segments: [
+    { start: 0, end: 1.2, text: "今天我们讨论" },
+    { start: 1.0, end: 3.4, text: "视频转写平台的质量问题首先" },
+    { start: 3.3, end: 5.2, text: "时间轴不能重叠其次断句要符合语义" },
+    { start: 5.0, end: 8.8, text: "如果模型返回很长的段落系统应该自动拆分" },
+    { start: 8.7, end: 10.5, text: "最后导出前要再次校验" },
+  ],
+}, 28));
+assertWorkbenchQuality(trailingChineseLeadInRows, "trailing Chinese lead-in repair");
+assert.ok(
+  trailingChineseLeadInRows.every((row) => !/首先$|其次$|再次$/.test(row.text)),
+  `trailing Chinese lead-in repair should not leave ordering words at row ends: ${trailingChineseLeadInRows.map((row) => row.text).join(" | ")}`,
+);
+assert.ok(
+  trailingChineseLeadInRows.some((row) => row.text === "首先时间轴不能重叠")
+    && trailingChineseLeadInRows.some((row) => row.text === "其次断句要符合语义")
+    && trailingChineseLeadInRows.some((row) => row.text === "最后导出前要再次校验"),
+  `trailing Chinese lead-in repair should preserve complete ordered clauses: ${trailingChineseLeadInRows.map((row) => row.text).join(" | ")}`,
+);
+
 const realisticEnglishDialogueRows = normalizeLikeWorkbench(rowsFromAsrResult({
   text: "Previously on The Vampire Diaries You left your son You abandoned your family I was ashamed I had to get out It is beautiful",
 }, 12));
@@ -213,6 +250,34 @@ assert.deepEqual(
     "I had to get out",
     "It is beautiful",
   ],
+);
+
+const questionBoundaryEnglishRows = normalizeLikeWorkbench(rowsFromAsrResult({
+  text: "I told you I would come back but you did not believe me now we have to leave before they find us what are you doing here",
+}, 18));
+assertWorkbenchQuality(questionBoundaryEnglishRows, "question boundary English dialogue repair");
+assert.ok(
+  questionBoundaryEnglishRows.some((row) => /^what are you doing here$/i.test(row.text)),
+  `question boundary repair should start a new subtitle at the question: ${questionBoundaryEnglishRows.map((row) => row.text).join(" | ")}`,
+);
+assert.ok(
+  questionBoundaryEnglishRows.every((row) => !/find$|^us what|I told you I$/i.test(row.text)),
+  `question boundary repair should not leave weak English row boundaries: ${questionBoundaryEnglishRows.map((row) => row.text).join(" | ")}`,
+);
+
+const overlappingEnglishQuestionRows = normalizeLikeWorkbench(rowsFromAsrResult({
+  segments: [
+    { start: 0, end: 2, text: "I told you I would" },
+    { start: 1.9, end: 4.6, text: "come back but you did not" },
+    { start: 4.5, end: 5.1, text: "believe me" },
+    { start: 5.05, end: 9, text: "now we have to leave before they find us" },
+    { start: 9, end: 11, text: "what are you doing here" },
+  ],
+}, 18));
+assertWorkbenchQuality(overlappingEnglishQuestionRows, "overlapping English question repair");
+assert.ok(
+  overlappingEnglishQuestionRows.every((row) => !/I told you I$/i.test(row.text)),
+  `overlapping English repair should move subject auxiliary pairs together: ${overlappingEnglishQuestionRows.map((row) => row.text).join(" | ")}`,
 );
 
 const restoredEnglishBoundaryRows = normalizeLikeWorkbench([

@@ -1,6 +1,7 @@
 import {
   dedupeAdjacentAsrRows,
   mergeShortAdjacentAsrRows,
+  rebalanceCjkSubtitleRowBoundaries,
   rebalanceEnglishSubtitleRowBoundaries,
   repairAsrTimeline,
   splitTranscriptIntoSentences,
@@ -366,7 +367,7 @@ export function repairReviewStructure(inputRows = [], options = {}) {
   const finalDedupeRows = repairAsrTimeline(dedupeAdjacentAsrRows(repairedRows));
   const finalCascadeMergedRows = mergeShortAdjacentAsrRows(finalDedupeRows, { maxGapSeconds: 0.85, maxCombinedDuration: 5.8, ...mergeOptions });
   const finalBaseRows = repairAsrTimeline(dedupeAdjacentAsrRows(finalCascadeMergedRows));
-  const finalReadableRows = repairReadableReviewRows(finalBaseRows).rows;
+  const finalReadableRows = rebalanceCjkSubtitleRowBoundaries(repairReadableReviewRows(finalBaseRows).rows);
   const finalRows = fitRowsWithinMaxEnd(
     repairAsrTimeline(rebalanceEnglishSubtitleRowBoundaries(finalReadableRows)),
     options.maxEnd,

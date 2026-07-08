@@ -24,7 +24,7 @@ export function splitTranscriptIntoSentences(text) {
 
 const phraseBreakBeforePatterns = [
   "然后", "所以", "但是", "不过", "可是", "因为", "如果", "否则", "虽然", "只是",
-  "同时", "并且", "以及", "为了", "接着", "另外", "最后", "首先", "为什么",
+  "同时", "并且", "以及", "为了", "接着", "另外", "最后", "首先", "其次", "为什么",
   "需要", "应该", "可以", "可能", "其实", "就是", "就像", "那么", "总之", "换句话说",
   "不要",
   "好的", "而是", "而不是", "也要", "系统", "这部分", "源语言", "目标语言", "翻译", "校对窗口", "按钮",
@@ -48,7 +48,7 @@ const phraseBreakBeforePatterns = [
 
 const phraseStrongBreakBeforePatterns = new Set([
   "然后", "所以", "但是", "不过", "可是", "因为", "如果", "否则", "虽然", "只是",
-  "同时", "并且", "以及", "为了", "接着", "另外", "最后", "首先", "为什么",
+  "同时", "并且", "以及", "为了", "接着", "另外", "最后", "首先", "其次", "为什么",
   "需要", "应该", "可以", "可能", "其实", "就是", "就像", "那么", "总之", "换句话说",
   "不要",
   "好的", "而是", "而不是", "也要", "系统", "这部分", "源语言", "目标语言", "翻译", "校对窗口", "按钮",
@@ -69,7 +69,7 @@ const phraseStrongBreakBeforePatterns = new Set([
 
 const implicitBreakBeforePatterns = [
   "然后", "所以", "但是", "不过", "可是", "因为", "如果", "否则", "虽然", "只是",
-  "同时", "并且", "以及", "为了", "接着", "另外", "最后", "首先", "为什么",
+  "同时", "并且", "以及", "为了", "接着", "另外", "最后", "首先", "其次", "为什么",
   "需要", "应该", "可以", "可能", "其实", "就是", "就像", "那么", "总之", "换句话说",
   "好的", "也要", "不要", "系统", "用户",
   "并生成", "不能让", "不能要求",
@@ -379,8 +379,21 @@ const englishSentenceStartWords = new Set([
   "then", "so", "but", "and", "for", "now",
 ]);
 
+const englishQuestionStartWords = new Set([
+  "what", "what's", "whats", "why", "where", "when", "who", "who's", "whos", "how",
+]);
+
 const englishLeadInWords = new Set([
   "first", "second", "third", "next", "then", "finally", "also", "now", "so", "well",
+]);
+
+const englishSubjectPronouns = new Set([
+  "i", "you", "he", "she", "it", "we", "they",
+]);
+
+const englishAuxiliaryBoundaryWords = new Set([
+  "can", "could", "should", "would", "will", "may", "might", "must", "shall",
+  "is", "are", "was", "were", "be", "been", "being", "has", "have", "had",
 ]);
 
 function cleanEnglishWord(word) {
@@ -403,12 +416,14 @@ function splitEnglishImplicitSentenceBoundaries(value) {
     const currentClean = cleanEnglishWord(word);
     const previousClean = cleanEnglishWord(words[index - 1]);
     const remainingWords = words.length - index;
-    const likelySentenceStart = isCapitalizedEnglishToken(word) || (current.length >= 5 && englishSentenceStartWords.has(currentClean));
+    const likelySentenceStart = isCapitalizedEnglishToken(word)
+      || (current.length >= 5 && englishSentenceStartWords.has(currentClean))
+      || (current.length >= 5 && englishQuestionStartWords.has(currentClean));
     const shouldSplit = current.length >= 3
       && remainingWords >= 2
-      && englishSentenceStartWords.has(currentClean)
+      && (englishSentenceStartWords.has(currentClean) || englishQuestionStartWords.has(currentClean))
       && likelySentenceStart
-      && (isCapitalizedEnglishToken(word) || currentClean === "and" || !englishWeakEndingWords.has(currentClean))
+      && (isCapitalizedEnglishToken(word) || currentClean === "and" || englishQuestionStartWords.has(currentClean) || !englishWeakEndingWords.has(currentClean))
       && !englishWeakEndingWords.has(previousClean);
 
     if (shouldSplit) {
@@ -495,6 +510,17 @@ function rebalanceEnglishSubtitleParts(parts, maxWords) {
       && next.length < relaxedLimit
       && isWeakEnglishBoundaryEnding(previous.at(-1))
     ) {
+      const lastClean = cleanEnglishWord(previous.at(-1));
+      const beforeLastClean = cleanEnglishWord(previous.at(-2));
+      if (
+        previous.length > 4
+        && next.length + 2 <= relaxedLimit
+        && englishAuxiliaryBoundaryWords.has(lastClean)
+        && englishSubjectPronouns.has(beforeLastClean)
+      ) {
+        next.unshift(...previous.splice(-2));
+        continue;
+      }
       next.unshift(previous.pop());
     }
 
@@ -558,6 +584,19 @@ export function rebalanceEnglishSubtitleRowBoundaries(inputRows = []) {
       && nextWords.length < relaxedLimit
       && isWeakEnglishBoundaryEnding(previousWords.at(-1))
     ) {
+      const lastClean = cleanEnglishWord(previousWords.at(-1));
+      const beforeLastClean = cleanEnglishWord(previousWords.at(-2));
+      if (
+        previousWords.length > 4
+        && nextWords.length + 2 <= relaxedLimit
+        && englishAuxiliaryBoundaryWords.has(lastClean)
+        && englishSubjectPronouns.has(beforeLastClean)
+      ) {
+        const movedPhrase = previousWords.splice(-2);
+        movedWords.push(...movedPhrase);
+        nextWords.unshift(...movedPhrase);
+        break;
+      }
       const movedWord = previousWords.pop();
       movedWords.unshift(movedWord);
       nextWords.unshift(movedWord);
@@ -599,6 +638,74 @@ export function rebalanceEnglishSubtitleRowBoundaries(inputRows = []) {
       start: boundary,
       text: nextWords.join(" "),
       originalText: nextRow.originalText === nextText ? nextWords.join(" ") : nextRow.originalText,
+      translation: movedTextChangedTranslation ? "" : nextRow.translation,
+      reviewStatus: nextRow.reviewStatus === "confirmed" ? "pending" : nextRow.reviewStatus,
+    };
+  }
+  return rows;
+}
+
+const cjkTrailingLeadInWords = ["首先", "其次", "然后", "所以", "但是", "不过", "可是", "另外", "接着", "最后"];
+
+function trailingCjkLeadIn(text) {
+  const clean = String(text || "").trim().replace(/[，,、：:；;]+$/g, "");
+  return cjkTrailingLeadInWords.find((word) => clean.endsWith(word)) || "";
+}
+
+export function rebalanceCjkSubtitleRowBoundaries(inputRows = []) {
+  const rows = inputRows.map((row) => ({ ...row }));
+  for (let index = 0; index < rows.length - 1; index += 1) {
+    const previousRow = rows[index];
+    const nextRow = rows[index + 1];
+    if (String(previousRow?.speaker || "未标注") !== String(nextRow?.speaker || "未标注")) continue;
+
+    const previousText = String(previousRow?.text || "").trim();
+    const nextText = String(nextRow?.text || "").trim();
+    if (!previousText || !nextText || !/[\u4e00-\u9fa5]/.test(previousText) || !/[\u4e00-\u9fa5]/.test(nextText)) continue;
+
+    const leadIn = trailingCjkLeadIn(previousText);
+    if (!leadIn) continue;
+
+    const previousMain = previousText.slice(0, previousText.length - leadIn.length).trim();
+    if (transcriptWeight(previousMain) < 4 || transcriptWeight(nextText) < 3) continue;
+
+    const nextCombined = `${leadIn}${nextText}`;
+    if (transcriptWeight(nextCombined) > Math.max(maxMergedUnits(nextCombined), transcriptWeight(nextText) + leadIn.length + 2)) continue;
+
+    const movedTextChangedTranslation = Boolean(
+      String(previousRow.translation || "").trim()
+      || String(nextRow.translation || "").trim(),
+    );
+    const previousStart = finiteNumber(previousRow.start, 0);
+    const previousEnd = finiteNumber(previousRow.end, previousStart);
+    const nextStart = finiteNumber(nextRow.start, previousEnd);
+    const nextEnd = finiteNumber(nextRow.end, nextStart);
+    let boundary = Math.max(previousStart + 0.35, Math.min(previousEnd, nextStart));
+    const previousDuration = Math.max(0.35, previousEnd - previousStart);
+    const movedWeight = Math.max(1, transcriptWeight(leadIn));
+    const previousWeight = Math.max(movedWeight + 1, transcriptWeight(previousText));
+    const boundaryShift = Math.min(0.9, Math.max(0.1, previousDuration * (movedWeight / previousWeight)));
+
+    if (Math.abs(nextStart - previousEnd) <= 0.08 && nextEnd - previousStart > 0.9) {
+      boundary = Math.min(
+        nextEnd - 0.35,
+        Math.max(previousStart + 0.35, previousEnd - boundaryShift),
+      );
+    }
+
+    rows[index] = {
+      ...previousRow,
+      end: boundary,
+      text: previousMain,
+      originalText: previousRow.originalText === previousText ? previousMain : previousRow.originalText,
+      translation: movedTextChangedTranslation ? "" : previousRow.translation,
+      reviewStatus: previousRow.reviewStatus === "confirmed" ? "pending" : previousRow.reviewStatus,
+    };
+    rows[index + 1] = {
+      ...nextRow,
+      start: boundary,
+      text: nextCombined,
+      originalText: nextRow.originalText === nextText ? nextCombined : nextRow.originalText,
       translation: movedTextChangedTranslation ? "" : nextRow.translation,
       reviewStatus: nextRow.reviewStatus === "confirmed" ? "pending" : nextRow.reviewStatus,
     };
