@@ -200,6 +200,55 @@ function preservedBoundarySet(options = {}) {
   return new Set((options.preserveBoundaries || []).map(([left, right]) => `${left}\u0000${right}`));
 }
 
+const orphanEnglishLeadWords = new Set([
+  "so", "well", "and", "but", "then", "now", "because", "if", "when", "while", "though", "although",
+]);
+
+const orphanCjkLeadWords = new Set([
+  "然后", "所以", "但是", "不过", "可是", "因为", "如果", "其实", "就是", "那么", "接着", "另外",
+]);
+
+function isOrphanLeadInRow(row) {
+  const text = String(row?.text || "").trim();
+  if (!text) return false;
+  const normalizedEnglish = text.replace(/^[^A-Za-z]+|[^A-Za-z]+$/g, "").toLowerCase();
+  if (normalizedEnglish && orphanEnglishLeadWords.has(normalizedEnglish)) return true;
+  return orphanCjkLeadWords.has(text.replace(/[，。！？!?；;,.]+$/g, ""));
+}
+
+function mergeOrphanLeadInRows(inputRows = [], options = {}) {
+  const rows = normalizeReviewRows(inputRows);
+  const preserveBoundaries = preservedBoundarySet(options);
+  const result = [];
+  for (let index = 0; index < rows.length; index += 1) {
+    const row = rows[index];
+    const next = rows[index + 1];
+    if (
+      next
+      && isOrphanLeadInRow(row)
+      && String(row.speaker || "未标注") === String(next.speaker || "未标注")
+      && Number(next.start) - Number(row.end) <= 0.5
+      && !preserveBoundaries.has(`${row.id}\u0000${next.id}`)
+      && String(next.text || "").trim()
+    ) {
+      result.push({
+        ...next,
+        id: row.id,
+        start: Math.min(Number(row.start) || 0, Number(next.start) || 0),
+        end: Math.max(Number(row.end) || 0, Number(next.end) || 0),
+        text: joinReviewText(row.text, next.text),
+        originalText: joinReviewText(row.originalText || row.text, next.originalText || next.text),
+        translation: joinReviewText(row.translation, next.translation),
+        reviewStatus: row.reviewStatus === "confirmed" || next.reviewStatus === "confirmed" ? "pending" : next.reviewStatus,
+      });
+      index += 1;
+      continue;
+    }
+    result.push(row);
+  }
+  return normalizeReviewRows(result);
+}
+
 function mergeTimingPressureAdjacentRows(inputRows = [], options = {}) {
   const rows = normalizeReviewRows(inputRows);
   const preserveBoundaries = preservedBoundarySet(options);
@@ -285,7 +334,8 @@ export function repairReviewStructure(inputRows = [], options = {}) {
   const boundedEnd = Number(options.maxEnd) || 0;
   const timedRows = repairAsrTimeline(dedupeAdjacentAsrRows(inputRows));
   const mergeOptions = { preserveBoundaries: options.preserveBoundaries || [] };
-  const pressureMergedRows = mergeTimingPressureAdjacentRows(timedRows, mergeOptions);
+  const orphanMergedRows = mergeOrphanLeadInRows(timedRows, mergeOptions);
+  const pressureMergedRows = mergeTimingPressureAdjacentRows(orphanMergedRows, mergeOptions);
   const mergedRows = mergeShortAdjacentAsrRows(pressureMergedRows, { maxGapSeconds: 0.85, maxCombinedDuration: 5.8, ...mergeOptions });
   const readableRepair = repairReadableReviewRows(repairAsrTimeline(mergedRows));
   const timedReadableRows = boundedEnd > 0

@@ -29,6 +29,7 @@ const phraseBreakBeforePatterns = [
   "不要",
   "好的", "而是", "而不是", "也要", "系统", "这部分", "源语言", "目标语言", "翻译", "校对窗口", "按钮",
   "并生成", "不能让",
+  "不能要求",
   "是的", "不是",
   "用户", "你会", "我会", "我们", "他们", "她们", "它们", "这个", "那个", "这些", "那些", "这里", "那里",
   "上一条", "下一条", "前一条", "后一条",
@@ -42,6 +43,7 @@ const phraseBreakBeforePatterns = [
   "不能只是", "工作台需要", "这个项目的主要功能", "不要把这种错误",
   "不一致时", "所有字幕转写", "从本地副本打开", "应该回到", "模型配置测试失败的原因",
   "源语言和目标语言应该保持在同一行", "翻译只应该作为源语言和目标语言",
+  "工作台",
 ];
 
 const phraseStrongBreakBeforePatterns = new Set([
@@ -51,6 +53,7 @@ const phraseStrongBreakBeforePatterns = new Set([
   "不要",
   "好的", "而是", "而不是", "也要", "系统", "这部分", "源语言", "目标语言", "翻译", "校对窗口", "按钮",
   "并生成", "不能让",
+  "不能要求",
   "是的", "不是", "用户", "你会", "我会", "我知道", "我觉得", "我以为", "我想", "我要", "我不", "我希望",
   "我当时", "我必须", "你知道", "你觉得", "你想", "你要", "你不", "你抛弃", "是不是",
   "第一个", "第二个", "第三个", "第四个", "第一点", "第二点", "第三点", "第四点",
@@ -61,6 +64,7 @@ const phraseStrongBreakBeforePatterns = new Set([
   "不能只是", "工作台需要", "这个项目的主要功能", "不要把这种错误",
   "不一致时", "所有字幕转写", "从本地副本打开", "应该回到", "模型配置测试失败的原因",
   "源语言和目标语言应该保持在同一行", "翻译只应该作为源语言和目标语言",
+  "工作台",
 ]);
 
 const implicitBreakBeforePatterns = [
@@ -68,7 +72,7 @@ const implicitBreakBeforePatterns = [
   "同时", "并且", "以及", "为了", "接着", "另外", "最后", "首先", "为什么",
   "需要", "应该", "可以", "可能", "其实", "就是", "就像", "那么", "总之", "换句话说",
   "好的", "也要", "不要", "系统", "用户",
-  "并生成", "不能让",
+  "并生成", "不能让", "不能要求",
   "你会", "我会", "我知道", "我觉得", "我以为", "我想", "我要", "我不", "我希望",
   "我当时", "我必须", "你知道", "你觉得", "你想", "你要", "你不", "你抛弃",
   "第一个", "第二个", "第三个", "第四个", "第一点", "第二点", "第三点", "第四点", "也不应该",
@@ -79,6 +83,7 @@ const implicitBreakBeforePatterns = [
   "不能只是", "工作台需要", "这个项目的主要功能", "不要把这种错误",
   "不一致时", "所有字幕转写", "从本地副本打开", "应该回到", "模型配置测试失败的原因",
   "源语言和目标语言应该保持在同一行", "翻译只应该作为源语言和目标语言",
+  "工作台",
 ];
 
 const phraseBreakAfterPatterns = [
@@ -108,7 +113,9 @@ const protectedCjkSplitPhrases = [
   "只应该作为源语言和目标语言不一致", "作为源语言和目标语言不一致",
   "源语言和目标语言不一致时的附加功能", "自动修复", "可以自动修复", "导入阶段自动修复",
   "媒体预览", "恢复媒体预览和当前段落",
+  "回响工作台",
   "上传视频后应该直接可以开始转写", "开始转写", "时间重叠也不应该",
+  "不能要求用户自己处理", "要求用户自己处理",
   "时间轴重叠", "恢复成开始转写页面", "作为提示由用户解决", "交给用户自己处理", "用户自己处理",
   "校对界面", "应该回到校对界面", "从本地副本打开继续处理",
   "继续处理", "模型配置测试失败的原因", "不能只是", "不能只是恢复成开始转写按钮",
@@ -133,6 +140,7 @@ function isProtectedCjkPatternBoundary(value, index, pattern) {
   if (pattern === "应该" && text[index - 1] === "不") return true;
   if (pattern === "应该" && text[index - 1] === "后") return true;
   if (pattern === "应该" && text[index - 1] === "只") return true;
+  if (pattern === "应该" && text.slice(index - 3, index) === "工作台") return true;
   if (pattern === "应该" && text.slice(index - 4, index) === "目标语言") return true;
   if (pattern === "应该" && text.slice(index - 6, index) === "字幕文件翻译") return true;
   if (pattern === "可能" && text.slice(index - 3, index) === "时间码") return true;
@@ -150,6 +158,7 @@ function isProtectedCjkPatternBoundary(value, index, pattern) {
 function shouldSkipCjkBreakBefore(value, index, pattern) {
   const text = String(value || "");
   if (pattern === "系统" && !text.slice(index).startsWith("系统应该")) return true;
+  if (pattern === "工作台" && text.slice(index - 2, index) === "回响") return true;
   if (pattern === "源语言和目标语言" && text.slice(index - 2, index) === "作为") return true;
   if (pattern === "翻译" && text[index - 1] === "把") return true;
   return false;

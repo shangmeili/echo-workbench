@@ -53,6 +53,21 @@ assert.deepEqual(
 );
 
 assert.deepEqual(
+  splitTranscriptIntoSentences("时间轴也出现重叠不能要求用户自己处理"),
+  ["时间轴也出现重叠", "不能要求用户自己处理"],
+);
+
+assert.deepEqual(
+  splitTranscriptIntoSentences("这些结构问题工作台应该自动整理成可校对的字幕段落"),
+  ["这些结构问题", "工作台应该自动整理成可校对的字幕段落"],
+);
+
+assert.deepEqual(
+  splitTranscriptIntoSentences("回响工作台应该自动整理成可校对的字幕段落"),
+  ["回响工作台应该自动整理成可校对的字幕段落"],
+);
+
+assert.deepEqual(
   splitTranscriptIntoSentences("是这样如果源语言是英文目标语言是中文翻译才是附加功能"),
   ["是这样如果源语言是英文", "目标语言是中文", "翻译才是附加功能"],
 );
@@ -862,6 +877,44 @@ for (const scenario of [
     },
     expectedText: /恢复成开始转写页面/,
     rejectedText: /恢复成\|开始转写|(^|\|)复成开始|作为\|提示/,
+  },
+  {
+    name: "orphan English lead-in should merge forward",
+    duration: 18,
+    result: {
+      segments: [
+        { start: 0, end: 2.5, text: "I have spent the last three weeks sending people into that river to look for" },
+        { start: 2.5, end: 4.5, text: "that bell and they have not found a thing." },
+        { start: 4.5, end: 5, text: "So" },
+        { start: 5, end: 8, text: "I am doing everything I can to think about other things instead." },
+      ],
+    },
+    expectedText: /So I am doing everything/,
+    rejectedText: /(^|\|)So\|/,
+  },
+  {
+    name: "overlapping Chinese fragments should preserve actionable phrases",
+    duration: 16,
+    result: {
+      segments: [
+        { start: 0, end: 1, text: "我" },
+        { start: 0.8, end: 3, text: "现在正在测试转写结果" },
+        { start: 2.8, end: 3.4, text: "但是" },
+        { start: 3.4, end: 7, text: "断句非常不合理需要系统自动修复" },
+        { start: 6.8, end: 12.5, text: "时间轴也出现重叠不能要求用户自己处理" },
+      ],
+    },
+    expectedText: /时间轴也出现重叠\|不能要求用户自己处理/,
+    rejectedText: /不能要求\|用户|用户\|自己处理/,
+  },
+  {
+    name: "long Chinese transcript should not split workbench action phrase",
+    duration: 20,
+    result: {
+      text: "昨天我们测试了一个很长的视频转写结果里面出现很多短片段还有时间重叠用户不应该被要求自己修复这些结构问题工作台应该自动整理成可校对的字幕段落",
+    },
+    expectedText: /这些结构问题\|工作台应该自动整理成可校对的字幕段落/,
+    rejectedText: /工作台\|应该|回响\|工作台/,
   },
 ]) {
   const repairedRows = repairReviewStructure(rowsFromAsrResult(scenario.result, scenario.duration), { maxEnd: scenario.duration }).rows;
