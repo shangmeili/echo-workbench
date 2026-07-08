@@ -1411,8 +1411,8 @@ h1 {
 
 .workbench-layout.has-results {
   height: 100%;
-  grid-template-columns: minmax(560px, 1.02fr) minmax(520px, 0.98fr);
-  grid-template-rows: minmax(0, 0.56fr) minmax(0, 0.44fr);
+  grid-template-columns: minmax(570px, 1.05fr) minmax(510px, 0.95fr);
+  grid-template-rows: minmax(0, 0.57fr) minmax(0, 0.43fr);
 }
 
 .workbench-layout.has-results.no-media-results {
