@@ -898,7 +898,12 @@ export function groupWordsToRows(words) {
     const duration = wordEnd(group.at(-1)) - wordStart(group[0]);
     const units = transcriptWeight(text);
     const sentenceBoundary = isSentenceClosed(text) && !endsWithProtectedAbbreviation(text);
-    if (sentenceBoundary || units >= maxMergedUnits(text) || duration >= 4.8) flush();
+    const readableLimit = maxMergedUnits(text);
+    const lastWord = text.split(/\s+/).at(-1) || "";
+    const weakEnglishEnding = isLatinText(text) && isWeakEnglishBoundaryEnding(lastWord);
+    const lengthBoundary = units >= readableLimit && (!weakEnglishEnding || units >= readableLimit + 4);
+    const durationBoundary = duration >= 4.8 && (!weakEnglishEnding || duration >= 6.2);
+    if (sentenceBoundary || lengthBoundary || durationBoundary) flush();
   });
   flush();
   return rows;

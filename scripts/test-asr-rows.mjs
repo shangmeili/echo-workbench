@@ -429,6 +429,10 @@ assert.ok(
   longEnglishWordRows.every((row) => transcriptWeight(row.text) <= 12),
   `word-level English rows should be readable: ${longEnglishWordRows.map((row) => row.text).join(" | ")}`,
 );
+assert.ok(
+  longEnglishWordRows.every((row) => !/\b(?:and|or|but|because|that|which|who|to|of|for|in|on|at|with|from|into|as|by|when|where|what|why|how|than)$/i.test(row.text)),
+  `word-level English rows should not stop on weak boundary words: ${longEnglishWordRows.map((row) => row.text).join(" | ")}`,
+);
 assert.equal(longEnglishWordRows.at(-1).end, 4.8);
 
 const abbreviationWordRows = groupWordsToRows([
