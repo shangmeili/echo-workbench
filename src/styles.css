@@ -1411,8 +1411,8 @@ h1 {
 
 .workbench-layout.has-results {
   height: 100%;
-  grid-template-columns: minmax(570px, 1.05fr) minmax(510px, 0.95fr);
-  grid-template-rows: minmax(0, 0.57fr) minmax(0, 0.43fr);
+  grid-template-columns: minmax(578px, 1.06fr) minmax(505px, 0.94fr);
+  grid-template-rows: minmax(0, 0.575fr) minmax(0, 0.425fr);
 }
 
 .workbench-layout.has-results.no-media-results {
@@ -6417,8 +6417,8 @@ h1 {
   }
 
   .workbench-layout.has-results {
-    grid-template-columns: minmax(520px, 1.02fr) minmax(0, 0.98fr);
-    grid-template-rows: minmax(0, 0.56fr) minmax(0, 0.44fr);
+    grid-template-columns: minmax(524px, 1.03fr) minmax(0, 0.97fr);
+    grid-template-rows: minmax(0, 0.565fr) minmax(0, 0.435fr);
   }
 
   .workbench-layout.has-results.no-media-results {
