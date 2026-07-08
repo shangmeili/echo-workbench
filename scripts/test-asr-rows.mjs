@@ -439,6 +439,21 @@ const abbreviationWordRows = groupWordsToRows([
 
 assert.deepEqual(abbreviationWordRows.map((row) => row.text), ["Dr. Smith arrived."]);
 
+const timestampWordRows = rowsFromAsrResult({
+  words: [
+    { word: "Timestamp", timestamp: [0, 0.35] },
+    { word: "words", timestamp: [0.4, 0.75] },
+    { word: "keep", timestamp: [0.8, 1.05] },
+    { word: "timing.", timestamp: [1.1, 1.55] },
+  ],
+}, 3);
+
+assert.deepEqual(
+  timestampWordRows.map((row) => ({ start: row.start, end: row.end, text: row.text })),
+  [{ start: 0, end: 1.55, text: "Timestamp words keep timing." }],
+  "word-level timestamp arrays should preserve provider timing",
+);
+
 const segmentRows = rowsFromAsrResult({
   segments: [
     { start_time: 0, end_time: 2.4, speaker_label: "S1", transcript: "第一段转写" },

@@ -766,12 +766,24 @@ function wordText(item) {
   return String(item?.word ?? item?.text ?? item?.token ?? "").trim();
 }
 
+function timestampPair(item) {
+  const timestamp = Array.isArray(item?.timestamp)
+    ? item.timestamp
+    : Array.isArray(item?.timestamps)
+      ? item.timestamps
+      : null;
+  if (!timestamp) return [];
+  return [timestamp[0], timestamp[1]];
+}
+
 function wordStart(item) {
-  return finiteNumber(item?.start ?? item?.start_time ?? item?.startTime, 0);
+  const [timestampStart] = timestampPair(item);
+  return finiteNumber(item?.start ?? item?.start_time ?? item?.startTime ?? timestampStart, 0);
 }
 
 function wordEnd(item) {
-  return finiteNumber(item?.end ?? item?.end_time ?? item?.endTime, wordStart(item) + 0.35);
+  const [, timestampEnd] = timestampPair(item);
+  return finiteNumber(item?.end ?? item?.end_time ?? item?.endTime ?? timestampEnd, wordStart(item) + 0.35);
 }
 
 export function joinAsrTokens(words) {
@@ -867,21 +879,11 @@ function segmentText(segment) {
   return normalizeAsrText(rawSegmentText(segment));
 }
 
-function segmentTimestampPair(segment) {
-  const timestamp = Array.isArray(segment?.timestamp)
-    ? segment.timestamp
-    : Array.isArray(segment?.timestamps)
-      ? segment.timestamps
-      : null;
-  if (!timestamp) return [];
-  return [timestamp[0], timestamp[1]];
-}
-
 function rowsFromSegment(segment, segmentIndex) {
   const rawText = rawSegmentText(segment);
   const text = normalizeAsrText(rawText);
   if (!text) return [];
-  const [timestampStart, timestampEnd] = segmentTimestampPair(segment);
+  const [timestampStart, timestampEnd] = timestampPair(segment);
   const start = finiteNumber(segment?.start ?? segment?.start_time ?? segment?.startTime ?? timestampStart, segmentIndex * 3);
   const inferredEnd = start + Math.max(transcriptWeight(text) * 0.22, 2);
   const explicitEnd = segment?.end ?? segment?.end_time ?? segment?.endTime;

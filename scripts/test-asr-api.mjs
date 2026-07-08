@@ -347,6 +347,47 @@ try {
 
   globalThis.fetch = async (url, options = {}) => {
     const body = options.body;
+    assert.equal(url, "https://api.openai.com/v1/audio/transcriptions");
+    assert.equal(options.method, "POST");
+    assert.equal(options.headers.Authorization, "Bearer openai-test-token");
+    assert.equal(body.get("model"), "whisper-1");
+    requests.push({ url, model: body.get("model"), mode: "word-timestamp-array" });
+
+    return new Response(JSON.stringify({
+      text: "timestamp words work",
+      words: [
+        { word: "timestamp", timestamp: [0, 0.42] },
+        { word: "words", timestamp: [0.46, 0.88] },
+        { word: "work", timestamp: [0.92, 1.3] },
+      ],
+    }), {
+      status: 200,
+      headers: { "Content-Type": "application/json; charset=utf-8" },
+    });
+  };
+
+  const whisperTimestampResult = await transcribeWithNvidia({
+    provider: {
+      transport: "nvidia-http",
+      endpoint: "https://api.openai.com/v1/audio/transcriptions",
+      model: "whisper-1",
+      apiKey: "openai-test-token",
+      languageCode: "multi",
+      sendModel: true,
+    },
+    file: tinyWavBuffer(),
+    fileName: "openai-whisper-word-timestamp-test.wav",
+  });
+
+  assert.equal(requests.length, 13);
+  assert.deepEqual(
+    rowsFromAsrResult(whisperTimestampResult, 3).map((row) => ({ start: row.start, end: row.end, text: row.text })),
+    [{ start: 0, end: 1.3, text: "timestamp words work" }],
+    "word timestamp-array ASR responses should keep provider timing",
+  );
+
+  globalThis.fetch = async (url, options = {}) => {
+    const body = options.body;
     assert.equal(url, "https://api.groq.com/openai/v1/audio/transcriptions");
     assert.equal(options.method, "POST");
     assert.equal(options.headers.Authorization, "Bearer groq-test-token");
@@ -381,7 +422,7 @@ try {
     fileName: "groq-whisper-test.wav",
   });
 
-  assert.equal(requests.length, 13);
+  assert.equal(requests.length, 14);
   assert.equal(groqResult.words.length, 1);
   assert.equal(groqResult.segments.length, 1);
 
@@ -413,7 +454,7 @@ try {
     fileName: "groq-env-test.wav",
   });
 
-  assert.equal(requests.length, 14);
+  assert.equal(requests.length, 15);
   assert.equal(groqEnvResult.segments.length, 1);
   delete process.env.DASHSCOPE_API_KEY;
   delete process.env.GROQ_API_KEY;
@@ -471,7 +512,7 @@ try {
     fileName: "nvidia-nim-test.wav",
   });
 
-  assert.equal(requests.length, 15);
+  assert.equal(requests.length, 16);
   assert.equal(nimResult.segments.length, 1);
 
   globalThis.fetch = async (url, options = {}) => {
@@ -507,7 +548,7 @@ try {
     fileName: "chunked-whisper-test.wav",
   });
 
-  assert.equal(requests.length, 16);
+  assert.equal(requests.length, 17);
   assert.equal(chunkedResult.segments.length, 2);
   assert.deepEqual(
     rowsFromAsrResult(chunkedResult, 5).map((row) => ({ start: row.start, end: row.end, text: row.text })),
