@@ -3091,6 +3091,22 @@ ${JSON.stringify(chunk.map((row) => ({ id: row.id, start: row.start, end: row.en
     return { before, after };
   };
 
+  const splitSegmentTextByRatio = (value, ratio) => {
+    const text = String(value || "").trim();
+    if (!text) return null;
+    const boundedRatio = Math.min(0.85, Math.max(0.15, Number(ratio) || 0.5));
+    if (/[A-Za-z]/.test(text) && /\s/.test(text) && !/[\u4e00-\u9fff]/.test(text)) {
+      const words = text.split(/\s+/).filter(Boolean);
+      if (words.length < 2) return null;
+      const splitAt = Math.max(1, Math.min(words.length - 1, Math.round(words.length * boundedRatio)));
+      return { before: words.slice(0, splitAt).join(" "), after: words.slice(splitAt).join(" ") };
+    }
+    const chars = Array.from(text);
+    if (chars.length < 2) return null;
+    const splitAt = Math.max(1, Math.min(chars.length - 1, Math.round(chars.length * boundedRatio)));
+    return { before: chars.slice(0, splitAt).join("").trim(), after: chars.slice(splitAt).join("").trim() };
+  };
+
   const writeClipboardText = async (text) => {
     if (navigator.clipboard?.writeText) {
       try {
@@ -3203,10 +3219,11 @@ ${JSON.stringify(chunk.map((row) => ({ id: row.id, start: row.start, end: row.en
         ? splitSegmentTextAt(sourceRow.originalText, textSelectionRef.current.index)
         : null) || splitSegmentText(sourceRow.originalText) || textParts
       : textParts;
+    const translationParts = sourceRow.translation ? splitSegmentTextByRatio(sourceRow.translation, ratio) : null;
     const nextRowId = `row-${Date.now()}-${Math.random().toString(16).slice(2)}`;
     const nextRows = [
       ...rows.slice(0, index),
-      { ...sourceRow, text: textParts.before, originalText: originalTextParts.before, end: splitTime, translation: "", reviewStatus: "pending" },
+      { ...sourceRow, text: textParts.before, originalText: originalTextParts.before, end: splitTime, translation: translationParts?.before || "", reviewStatus: "pending" },
       {
         ...sourceRow,
         id: nextRowId,
@@ -3214,7 +3231,7 @@ ${JSON.stringify(chunk.map((row) => ({ id: row.id, start: row.start, end: row.en
         end,
         text: textParts.after,
         originalText: originalTextParts.after,
-        translation: "",
+        translation: translationParts?.after || "",
         reviewStatus: "pending",
       },
       ...rows.slice(index + 1),
@@ -3228,7 +3245,12 @@ ${JSON.stringify(chunk.map((row) => ({ id: row.id, start: row.start, end: row.en
     markRowsEdited(repairResult.rows.length);
     const mergeText = repairResult.mergedRowCount ? `系统已自动合并 ${repairResult.mergedRowCount} 条短碎片。` : "";
     const splitText = repairResult.splitRowCount ? `系统已继续拆分 ${repairResult.splitRowCount} 条过长段落。` : "";
-    setMessage(`已拆分当前段落。译文已清空，请重新翻译或手动校对。${mergeText}${splitText}`);
+    const translationText = sourceRow.translation
+      ? translationParts
+        ? "已同步拆分已有译文。"
+        : "译文未能可靠拆分，请手动校对译文。"
+      : "可继续翻译或手动补充译文。";
+    setMessage(`已拆分当前段落。${translationText}${mergeText}${splitText}`);
   };
 
   const mergeWithNextRow = (rowId) => {

@@ -1908,6 +1908,24 @@ try {
   assert.match(replenishedTable, /Manual edited translation must stay/);
   assert.match(replenishedTable, /Product flow acceptance sentence two/);
   assert.match(await readWorkbenchFeedback(page), /已补齐 1 条字幕译文/);
+  await page.locator(".review-list-row").first().click();
+  await page.locator(".current-segment-card .subtitle-source-textarea").focus();
+  await page.evaluate(() => {
+    const field = document.querySelector(".current-segment-card .subtitle-source-textarea");
+    const splitIndex = field.value.indexOf("验收");
+    field.setSelectionRange(splitIndex, splitIndex);
+    field.dispatchEvent(new Event("select", { bubbles: true }));
+    document.dispatchEvent(new Event("selectionchange", { bubbles: true }));
+  });
+  await page.getByRole("button", { name: "拆分段落", exact: true }).click();
+  await page.waitForFunction(() => document.querySelectorAll(".review-list-row").length === 3);
+  assert.equal(await page.locator(".missing-translation-chip").count(), 0, "splitting an already translated subtitle should not create missing-translation chores");
+  assert.match(await readWorkbenchFeedback(page), /已同步拆分已有译文/, "manual split should preserve existing bilingual work");
+  const splitBilingualTable = await readCorrectionTableValues(page);
+  assert.match(splitBilingualTable, /Manual edited/, "first split row should keep part of the existing manual translation");
+  assert.match(splitBilingualTable, /translation must stay/, "second split row should keep the remaining manual translation");
+  await page.getByRole("button", { name: "撤销", exact: true }).click();
+  await page.waitForFunction(() => document.querySelectorAll(".review-list-row").length === 2);
   await assertWorkbenchChromePersistsWhileReviewing(page, "字幕文件翻译");
 
   const downloadPromise = page.waitForEvent("download");
