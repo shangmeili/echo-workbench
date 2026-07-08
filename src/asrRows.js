@@ -296,7 +296,8 @@ function splitLongSentenceChunk(text) {
   if (!clean) return [];
   const implicitEnglishParts = splitEnglishImplicitSentenceBoundaries(clean);
   if (implicitEnglishParts.length > 1) {
-    return implicitEnglishParts.flatMap((part) => splitLongSentenceChunk(part));
+    const englishRows = implicitEnglishParts.flatMap((part) => splitLongSentenceChunk(part));
+    return rebalanceEnglishSubtitleParts(englishRows, maxMergedUnits(clean));
   }
   const implicitParts = splitCjkImplicitSentenceBoundaries(clean);
   if (implicitParts.length > 1) {
@@ -348,9 +349,20 @@ const englishBreakBeforeWords = new Set([
 const englishWeakEndingWords = new Set([
   "a", "an", "the", "and", "or", "but", "because", "that", "which", "who", "to", "of",
   "for", "in", "on", "at", "with", "from", "into", "as", "by",
+  "when", "where", "what", "why", "how", "than",
   "can", "could", "should", "would", "will", "may", "might", "must", "shall",
   "is", "are", "was", "were", "be", "been", "being", "has", "have", "had",
+  "i'm", "you're", "we're", "they're", "he's", "she's", "it's",
+  "i've", "you've", "we've", "they've", "i'll", "you'll", "we'll", "they'll",
   "then", "also", "finally",
+]);
+
+const englishContinuationStartWords = new Set([
+  "go", "goes", "went", "gone",
+]);
+
+const englishWeakStartWords = new Set([
+  "exactly", "really", "very", "just", "only", "even", "still", "too",
 ]);
 
 const englishSentenceStartWords = new Set([
@@ -414,7 +426,49 @@ function splitEnglishTextByReadableLength(value, maxWords) {
     remaining = remaining.slice(splitIndex);
   }
   if (remaining.length) result.push(remaining.join(" "));
-  return result.filter(Boolean);
+  return rebalanceEnglishSubtitleParts(result.filter(Boolean), limit);
+}
+
+function isWeakEnglishBoundaryEnding(word) {
+  const clean = cleanEnglishWord(word);
+  if (!clean) return false;
+  if (englishWeakEndingWords.has(clean)) return true;
+  return clean.length > 5 && /ing$/.test(clean);
+}
+
+function rebalanceEnglishSubtitleParts(parts, maxWords) {
+  const rows = parts.map((part) => String(part || "").trim().split(/\s+/).filter(Boolean)).filter((part) => part.length);
+  const limit = Math.max(6, Number(maxWords) || 10);
+  const relaxedLimit = limit + 3;
+
+  for (let index = 0; index < rows.length - 1; index += 1) {
+    let previous = rows[index];
+    let next = rows[index + 1];
+
+    while (
+      previous.length > 4
+      && next.length < relaxedLimit
+      && isWeakEnglishBoundaryEnding(previous.at(-1))
+    ) {
+      next.unshift(previous.pop());
+    }
+
+    while (
+      next.length > 4
+      && previous.length < relaxedLimit
+      && (
+        englishContinuationStartWords.has(cleanEnglishWord(next[0]))
+        || (cleanEnglishWord(next[0]) === "it" && cleanEnglishWord(next[1]) === "and")
+      )
+    ) {
+      previous.push(next.shift());
+    }
+
+    rows[index] = previous;
+    rows[index + 1] = next;
+  }
+
+  return rows.map((part) => part.join(" ")).filter(Boolean);
 }
 
 function chooseReadableEnglishSplitIndex(words, maxWords) {
@@ -432,6 +486,7 @@ function chooseReadableEnglishSplitIndex(words, maxWords) {
     let score = Math.abs(index - target);
     if (/[,.!?;:]$/.test(before)) score -= 7;
     if (englishBreakBeforeWords.has(currentClean)) score -= 4;
+    if (englishWeakStartWords.has(currentClean)) score += 8;
     if (currentClean === "and" && tailWords <= 5) score += 10;
     if (englishWeakEndingWords.has(currentClean)) score += 10;
     if (englishWeakEndingWords.has(beforeClean)) score += 14;
