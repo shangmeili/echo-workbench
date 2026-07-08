@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { asrResultHasTiming, dedupeAdjacentAsrRows, detectTranscriptionQualityIssue, groupWordsToRows, joinAsrTokens, mergeShortAdjacentAsrRows, normalizeAsrText, repairAsrTimeline, rowsFromAsrResult, splitTranscriptIntoSentences, transcriptWeight } from "../src/asrRows.js";
+import { asrResultHasTiming, dedupeAdjacentAsrRows, detectTranscriptionQualityIssue, groupWordsToRows, joinAsrTokens, mergeShortAdjacentAsrRows, normalizeAsrText, rebalanceEnglishSubtitleRowBoundaries, repairAsrTimeline, rowsFromAsrResult, splitTranscriptIntoSentences, transcriptWeight } from "../src/asrRows.js";
 import { getSubtitleQualityHints, repairReviewStructure } from "../src/reviewRows.js";
 
 assert.deepEqual(
@@ -1044,6 +1044,30 @@ assert.equal(
     { text: "最后提醒用户继续核对专有名词和低置信片段。" },
   ], "中文", 120),
   "",
+);
+
+assert.deepEqual(
+  rebalanceEnglishSubtitleRowBoundaries([
+    { id: "a", start: 0, end: 2, speaker: "未标注", text: "And then you say something appropriate in response. To what", translation: "" },
+    { id: "b", start: 2, end: 4, speaker: "未标注", text: "end?", translation: "" },
+  ]).map((row) => row.text),
+  ["And then you say something appropriate in response.", "To what end?"],
+);
+
+assert.deepEqual(
+  rebalanceEnglishSubtitleRowBoundaries([
+    { id: "a", start: 0, end: 2, speaker: "未标注", text: "Papa Doc's capital. Idea. That's Port-au-Prince. Haiti. - Can I help", translation: "" },
+    { id: "b", start: 2, end: 4, speaker: "未标注", text: "you?", translation: "" },
+  ]).map((row) => row.text),
+  ["Papa Doc's capital. Idea. That's Port-au-Prince. Haiti.", "- Can I help you?"],
+);
+
+assert.deepEqual(
+  rebalanceEnglishSubtitleRowBoundaries([
+    { id: "a", start: 0, end: 2, speaker: "未标注", text: "sorry. I really thought if you guys went instead of", translation: "" },
+    { id: "b", start: 2, end: 4, speaker: "未标注", text: "me.", translation: "" },
+  ]).map((row) => row.text),
+  ["sorry.", "I really thought if you guys went instead of me."],
 );
 
 console.log("asr row tests passed");

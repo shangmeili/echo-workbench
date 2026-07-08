@@ -241,6 +241,32 @@ assert.ok(
   `restored English rows should keep the question phrase together: ${restoredEnglishBoundaryRows.map((row) => row.text).join(" | ")}`,
 );
 
+const restoredSingleWordContinuationRows = normalizeLikeWorkbench([
+  { id: "weak-question-tail", start: 277.32, end: 281.9, speaker: "未标注", text: "And then you say something appropriate in response. To what", translation: "" },
+  { id: "weak-question-tail-next", start: 281.9, end: 283.942, speaker: "未标注", text: "end?", translation: "" },
+  { id: "weak-pronoun-tail", start: 574.084, end: 577.395, speaker: "未标注", text: "sort of a job? Oh, yeah. I'm", translation: "" },
+  { id: "weak-pronoun-tail-next", start: 577.395, end: 584.936, speaker: "未标注", text: "a waitress at the Cheesecake Factory. Oh, I love cheesecake. You're lactose intolerant. I don't eat it.", translation: "" },
+  { id: "weak-question-lead", start: 43.117, end: 48.121, speaker: "未标注", text: "Papa Doc's capital. Idea. That's Port-au-Prince. Haiti. - Can I help", translation: "" },
+  { id: "weak-question-lead-next", start: 48.121, end: 50.163, speaker: "未标注", text: "you?", translation: "" },
+  { id: "weak-tail-clause", start: 1247.866, end: 1252.446, speaker: "未标注", text: "sorry. I really thought if you guys went instead of", translation: "" },
+  { id: "weak-tail-clause-next", start: 1252.446, end: 1254.066, speaker: "未标注", text: "me.", translation: "" },
+]);
+assertCleanTimeline(restoredSingleWordContinuationRows, "single-word English continuation repair");
+assert.deepEqual(
+  restoredSingleWordContinuationRows.map((row) => row.text),
+  [
+    "Papa Doc's capital. Idea. That's Port-au-Prince. Haiti.",
+    "- Can I help you?",
+    "And then you say something appropriate in response.",
+    "To what end?",
+    "sort of a job? Oh, yeah.",
+    "I'm a waitress at the Cheesecake Factory. Oh, I love cheesecake. You're lactose intolerant. I don't eat it.",
+    "sorry.",
+    "I really thought if you guys went instead of me.",
+  ],
+  "single-word continuation repair should move weak trailing clauses before proofreading",
+);
+
 const translatedWeakBoundaryRows = normalizeLikeWorkbench([
   { id: "translated-left", start: 0, end: 2.8, speaker: "未标注", text: "I can become the Ripper that", translation: "我可以成为那个开膛手", reviewStatus: "confirmed" },
   { id: "translated-right", start: 2.8, end: 4.6, speaker: "未标注", text: "you want.", translation: "你想要的。", reviewStatus: "confirmed" },

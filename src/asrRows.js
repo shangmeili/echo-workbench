@@ -436,6 +436,42 @@ function isWeakEnglishBoundaryEnding(word) {
   return clean.length > 5 && /ing$/.test(clean);
 }
 
+function isEnglishText(text) {
+  return /[A-Za-z]/.test(String(text || "")) && !/[\u4e00-\u9fa5]/.test(String(text || ""));
+}
+
+function isEnglishQuestionLeadClause(text) {
+  return /^(?:[-–—]\s*)?(?:can|could|would|will|do|does|did|is|are|was|were|have|has|had|should|shall|may|might|must)\b/i.test(String(text || "").trim());
+}
+
+function movableEnglishTrailingClause(previousText, nextText, relaxedLimit) {
+  const previous = String(previousText || "").trim();
+  const next = String(nextText || "").trim();
+  if (!previous || !next) return null;
+
+  const boundaryMatches = [...previous.matchAll(/[.!?]\s+/g)];
+  const lastBoundary = boundaryMatches.at(-1);
+  if (!lastBoundary) return null;
+
+  const tailStart = lastBoundary.index + lastBoundary[0].length;
+  const head = previous.slice(0, tailStart).trim();
+  const tail = previous.slice(tailStart).trim();
+  if (!head || !tail) return null;
+
+  const headWords = head.split(/\s+/).filter(Boolean);
+  const tailWords = tail.split(/\s+/).filter(Boolean);
+  const nextWords = next.split(/\s+/).filter(Boolean);
+  const combinedTailLength = tailWords.length + nextWords.length;
+  const combinedLimit = tailWords.length <= 1 ? relaxedLimit + 6 : relaxedLimit;
+  if (headWords.length < 1 || tailWords.length > 10 || combinedTailLength > combinedLimit) return null;
+
+  const tailEndingIsWeak = isWeakEnglishBoundaryEnding(tailWords.at(-1));
+  const tailIsQuestionLead = isEnglishQuestionLeadClause(tail) && nextWords.length <= 4;
+  if (!tailEndingIsWeak && !tailIsQuestionLead) return null;
+
+  return { head, tailWords };
+}
+
 function rebalanceEnglishSubtitleParts(parts, maxWords) {
   const rows = parts.map((part) => String(part || "").trim().split(/\s+/).filter(Boolean)).filter((part) => part.length);
   const limit = Math.max(6, Number(maxWords) || 10);
@@ -480,15 +516,35 @@ export function rebalanceEnglishSubtitleRowBoundaries(inputRows = []) {
 
     const previousText = String(previousRow?.text || "").trim();
     const nextText = String(nextRow?.text || "").trim();
-    if (!previousText || !nextText || !isLatinText(previousText) || !isLatinText(nextText)) continue;
+    if (!previousText || !nextText || !isEnglishText(previousText) || !isEnglishText(nextText)) continue;
 
     const previousWords = previousText.split(/\s+/).filter(Boolean);
     const nextWords = nextText.split(/\s+/).filter(Boolean);
     const relaxedLimit = Math.max(10, maxMergedUnits(`${previousText} ${nextText}`) + 4);
     const movedWords = [];
+    const trailingClause = movableEnglishTrailingClause(previousText, nextText, relaxedLimit);
+
+    if (trailingClause) {
+      previousWords.splice(0, previousWords.length, ...trailingClause.head.split(/\s+/).filter(Boolean));
+      movedWords.push(...trailingClause.tailWords);
+      nextWords.unshift(...trailingClause.tailWords);
+    }
+
+    if (
+      !movedWords.length
+      && previousWords.length > 4
+      && nextWords.length < relaxedLimit
+      && previousWords.length >= 2
+      && cleanEnglishWord(previousWords.at(-2)) === "instead"
+      && cleanEnglishWord(previousWords.at(-1)) === "of"
+    ) {
+      const movedPhrase = previousWords.splice(-2);
+      movedWords.push(...movedPhrase);
+      nextWords.unshift(...movedPhrase);
+    }
 
     while (
-      movedWords.length < 2
+      !movedWords.length
       && previousWords.length > 4
       && nextWords.length < relaxedLimit
       && isWeakEnglishBoundaryEnding(previousWords.at(-1))
