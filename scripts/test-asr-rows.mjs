@@ -733,6 +733,27 @@ assert.ok(
   `unpunctuated dialogue rows should stay readable, got ${unpunctuatedDialogueRows.map((row) => row.text).join(" | ")}`,
 );
 
+const realSubtitleLongRows = repairReviewStructure(rowsFromAsrResult({
+  segments: [{
+    start: 0,
+    end: 22.38,
+    text: "之前在鬼魂笔记中你抛弃了你的儿子你抛弃了你的家人我当时很羞愧我必须离开短时间是的你不相信我",
+  }],
+}, 22.38), { maxEnd: 22.38 }).rows;
+assert.ok(
+  realSubtitleLongRows.length >= 6,
+  `real subtitle dialogue should be split into proofreading rows, got ${realSubtitleLongRows.map((row) => row.text).join(" | ")}`,
+);
+assert.ok(
+  realSubtitleLongRows.every((row) => transcriptWeight(row.text) <= 16),
+  `real subtitle dialogue rows should not stay as long blocks, got ${realSubtitleLongRows.map((row) => row.text).join(" | ")}`,
+);
+assert.deepEqual(
+  realSubtitleLongRows.flatMap((row, index) => getSubtitleQualityHints(row, realSubtitleLongRows[index + 1]).filter((hint) => ["时间重叠", "单条过长", "阅读过快"].includes(hint))),
+  [],
+  "real subtitle dialogue repair should not expose timing or long-row chores to users",
+);
+
 const overlappingRows = rowsFromAsrResult({
   segments: [
     { start: 0, end: 4, text: "第一句内容。" },

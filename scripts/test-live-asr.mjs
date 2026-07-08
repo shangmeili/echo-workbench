@@ -34,12 +34,13 @@ function usage() {
 }
 
 function parseArgs(argv) {
+  const defaultDashScopeEndpoint = "https://dashscope.aliyuncs.com/api/v1";
   const args = {
     file: "",
     expect: "",
     language: "zh",
     transport: "dashscope-funasr",
-    endpoint: "https://dashscope.aliyuncs.com/api/v1",
+    endpoint: defaultDashScopeEndpoint,
     model: "fun-asr",
     "function-id": "",
     duration: "0",
@@ -71,6 +72,12 @@ function parseArgs(argv) {
       args[key] = argv[index + 1] || "";
       index += 1;
     }
+  }
+  if (args.transport === "nvidia-riva-grpc") {
+    if (args.endpoint === defaultDashScopeEndpoint) args.endpoint = "grpc.nvcf.nvidia.com:443";
+    if (args.model === "fun-asr") args.model = "whisper-large-v3";
+    if (!args["function-id"]) args["function-id"] = "b702f636-f60c-4a3d-a6f4-f3568c13bd7d";
+    if (args.language === "zh") args.language = "en-US";
   }
   return args;
 }
@@ -209,8 +216,10 @@ function assertWorkbenchRows(rows, label) {
 function providerEnvKeyNames({ transport, endpoint }) {
   const target = String(endpoint || "").toLowerCase();
   const names = ["ASR_API_KEY"];
-  if (transport === "dashscope-funasr" || target.includes("dashscope.aliyuncs.com")) {
+  if (transport === "dashscope-funasr") {
     names.push("DASHSCOPE_API_KEY");
+  } else if (transport === "nvidia-riva-grpc") {
+    names.push("NVIDIA_API_KEY");
   } else if (target.includes("api.groq.com")) {
     names.push("GROQ_API_KEY");
   } else if (target.includes("api.openai.com")) {

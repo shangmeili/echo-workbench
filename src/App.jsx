@@ -2759,8 +2759,12 @@ ${rawText}`;
       setWorkspaceState((current) => ({ ...current, lastTranscriptionStatus: null }));
     } catch (error) {
       const errorMessage = formatAsrFailureMessage(error);
-      if (isAsrLanguageParameterError(error)) {
-        markAsrProviderRuntimeFailure("转写任务失败：当前服务未通过素材语言或音频参数校验，系统已暂停将其视为可用转写服务。");
+      if (error?.name !== "AbortError") {
+        markAsrProviderRuntimeFailure(
+          isAsrLanguageParameterError(error)
+            ? "转写任务失败：当前服务未通过素材语言或音频参数校验，系统已记录为未通过状态。"
+            : `转写任务失败：${error?.stage || "调用转写服务"}未完成，系统已记录失败状态并保留当前任务。`,
+        );
       }
       setMessage(errorMessage);
       setWorkbenchTranscriptionStatus({
@@ -3842,39 +3846,39 @@ ${JSON.stringify(chunk.map((row) => ({ id: row.id, start: row.start, end: row.en
                 <small>用于转写后的自动校正和翻译，不会作为新内容写入结果。</small>
               </label>
             ))}
-            {!isSubtitleFileFlow && transcriptionStatus.state !== "idle" && (!rows.length || transcriptionStatus.state !== "success") && (
-              <div className={`transcription-status-card ${transcriptionStatus.state}`} role={transcriptionStatus.state === "error" ? "alert" : "status"} aria-live="polite">
-                <div>
-                  <strong>
-                    {transcriptionStatus.state === "running"
-                      ? "转写进行中"
-                      : transcriptionStatus.state === "error"
-                        ? "转写未完成"
-                        : transcriptionStatus.state === "cancelled"
-                          ? "转写已取消"
-                          : "转写完成"}
-                  </strong>
-                  {transcriptionStatus.stage && (
-                    <em className="status-stage">阶段：{transcriptionStatus.stage}</em>
-                  )}
-                  <span>{transcriptionStatus.message}</span>
-                </div>
-                {transcriptionStatus.state === "error" && (
-                  <div className="transcription-status-actions">
-                    <button className="secondary compact-button" type="button" onClick={startTranscription} disabled={!canStartTranscription || busy === "asr"}>
-                      <RefreshCw size={15} />
-                      重试
-                    </button>
-                    <button className="secondary compact-button" type="button" onClick={() => onOpenModels("asr")}>
-                      <SlidersHorizontal size={15} />
-                      转写服务
-                    </button>
-                  </div>
-                )}
-              </div>
-            )}
             {!isSubtitleFileFlow && !rows.length && (
               <div className="setup-action-footer">
+                {transcriptionStatus.state !== "idle" && transcriptionStatus.state !== "success" && (
+                  <div className={`transcription-status-card ${transcriptionStatus.state}`} role={transcriptionStatus.state === "error" ? "alert" : "status"} aria-live="polite">
+                    <div>
+                      <strong>
+                        {transcriptionStatus.state === "running"
+                          ? "转写进行中"
+                          : transcriptionStatus.state === "error"
+                            ? "转写未完成"
+                            : transcriptionStatus.state === "cancelled"
+                              ? "转写已取消"
+                              : "转写完成"}
+                      </strong>
+                      {transcriptionStatus.stage && (
+                        <em className="status-stage">阶段：{transcriptionStatus.stage}</em>
+                      )}
+                      <span>{transcriptionStatus.message}</span>
+                    </div>
+                    {transcriptionStatus.state === "error" && (
+                      <div className="transcription-status-actions">
+                        <button className="secondary compact-button" type="button" onClick={startTranscription} disabled={!canStartTranscription || busy === "asr"}>
+                          <RefreshCw size={15} />
+                          重试
+                        </button>
+                        <button className="secondary compact-button" type="button" onClick={() => onOpenModels("asr")}>
+                          <SlidersHorizontal size={15} />
+                          转写服务
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )}
                 <button className="primary start-transcription-button" onClick={startTranscription} disabled={!canStartTranscription || busy === "asr"}>
                   {busy === "asr" ? <Loader2 className="spin" size={18} /> : <AudioWaveform size={18} />}
                   {busy === "asr" ? "转写中" : "开始转写"}
