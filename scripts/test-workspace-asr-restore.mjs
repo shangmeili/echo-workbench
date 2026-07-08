@@ -17,22 +17,28 @@ async function waitForServer(baseUrl, timeoutMs = 30_000) {
   throw new Error(`server did not start: ${baseUrl}`);
 }
 
+async function waitForWorkspaceSaved(page) {
+  await page.waitForFunction(() => document.querySelector(".save-status-pill.saved")?.textContent?.includes("已保存"));
+}
+
 async function createWorkspaceProject(baseUrl, id = "restore_asr_project", name = "restore-asr-video.mp4", options = {}) {
   const sourceLanguage = options.sourceLanguage || "中文";
+  const rows = Array.isArray(options.rows) ? options.rows : [];
+  const mediaDuration = Number(options.duration) || 8;
   const project = {
     id,
     recent: {
       id,
       name,
-      meta: "video/mp4 · 0.1 MB",
-      status: "已导入",
+      meta: rows.length ? `转写校对 · ${rows.length} 条` : "video/mp4 · 0.1 MB",
+      status: rows.length ? "待校对" : "已导入",
       time: "测试",
       type: "video",
       tool: "video-transcribe",
       hasWorkspaceCopy: true,
     },
     tool: "video-transcribe",
-    rows: [],
+    rows,
     workspaceState: {
       sourceLanguage,
       targetLanguage: "英文",
@@ -41,7 +47,7 @@ async function createWorkspaceProject(baseUrl, id = "restore_asr_project", name 
       transcriptionContext: "",
       ...(options.workspaceStatePatch || {}),
     },
-    media: { name, type: "video/mp4", size: 128, duration: 8 },
+    media: { name, type: "video/mp4", size: 128, duration: mediaDuration },
     asrAudio: null,
     updatedAt: Date.now(),
   };
@@ -100,9 +106,47 @@ try {
       },
     },
   });
+  await createWorkspaceProject(baseUrl, "restore_weak_boundary_project", "restore-weak-boundary-video.mp4", {
+    sourceLanguage: "英文",
+    duration: 12,
+    rows: [
+      { id: "weak-question-tail", start: 0, end: 2.4, speaker: "未标注", text: "And then you say something appropriate in response. To what", translation: "", reviewStatus: "pending" },
+      { id: "weak-question-tail-next", start: 2.4, end: 3.4, speaker: "未标注", text: "end?", translation: "", reviewStatus: "pending" },
+      { id: "weak-pronoun-tail", start: 3.4, end: 5.2, speaker: "未标注", text: "sort of a job? Oh, yeah. I'm", translation: "", reviewStatus: "pending" },
+      { id: "weak-pronoun-tail-next", start: 5.2, end: 11.6, speaker: "未标注", text: "a waitress at the Cheesecake Factory. Oh, I love cheesecake. You're lactose intolerant. I don't eat it.", translation: "", reviewStatus: "pending" },
+    ],
+    workspaceStatePatch: {
+      targetLanguage: "中文",
+      exportMode: "source",
+    },
+  });
 
   browser = await chromium.launch({ headless: true });
   const page = await browser.newPage({ viewport: { width: 1280, height: 720 } });
+
+  await page.goto(`${baseUrl}/#workbench/video-transcribe/restore_weak_boundary_project`, { waitUntil: "networkidle" });
+  await page.waitForFunction(() => document.querySelector(".workspace-title strong")?.textContent?.includes("视频转写"));
+  await page.waitForFunction(() => document.querySelector(".subtitle-table")?.textContent?.includes("To what end?"));
+  const restoredWeakBoundaryText = await page.locator(".subtitle-table").innerText();
+  assert.match(restoredWeakBoundaryText, /To what end\?/);
+  assert.match(restoredWeakBoundaryText, /I'm a waitress at the Cheesecake Factory/);
+  assert.doesNotMatch(restoredWeakBoundaryText, /Oh, yeah\. I'm\s*$/m, "restored old project should not leave a dangling I'm row ending");
+  await waitForWorkspaceSaved(page);
+  const weakProjectResponse = await fetch(`${baseUrl}/api/workspace/projects/restore_weak_boundary_project`);
+  const weakProjectData = await weakProjectResponse.json();
+  assert.equal(weakProjectResponse.ok, true, weakProjectData.error || "failed to reload repaired weak-boundary project");
+  const persistedWeakRows = weakProjectData.project.rows.map((row) => row.text);
+  assert.deepEqual(
+    persistedWeakRows,
+    [
+      "And then you say something appropriate in response.",
+      "To what end?",
+      "sort of a job? Oh, yeah.",
+      "I'm a waitress at the Cheesecake Factory. Oh, I love cheesecake. You're lactose intolerant. I don't eat it.",
+    ],
+    "opening a legacy project should persist automatically repaired subtitle boundaries back to the local workspace",
+  );
+
   let workspaceAsrCalled = false;
   await page.route("**/api/asr/transcribe-workspace", async (route) => {
     workspaceAsrCalled = true;

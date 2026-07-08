@@ -495,7 +495,7 @@ async function assertWorkbenchLayout(page, { title, startExpected, hasResults = 
       assert.equal(layout.quickStateSharesActionTitleRow, true, `${title} text-only result state should keep segment/export status in the processing header row`);
     }
     if (layout.hasMediaPreview) {
-      assert.ok(layout.mediaWidth >= 360 && layout.mediaWidth <= 440, `${title} media preview column should stay readable after results exist without crowding proofreading, got ${layout.mediaWidth}`);
+      assert.ok(layout.mediaWidth >= 430 && layout.mediaWidth <= 560, `${title} media preview column should stay readable after results exist while slightly reducing the proofreading column, got ${layout.mediaWidth}`);
     } else if (expectsMediaPanel) {
       const minSummaryWidth = title === "字幕文件翻译" ? 300 : 320;
       assert.ok(layout.mediaWidth >= minSummaryWidth && layout.mediaWidth <= 420, `${title} summary/media column should stay compact, got media column ${layout.mediaWidth}`);

@@ -1411,7 +1411,7 @@ h1 {
 
 .workbench-layout.has-results {
   height: 100%;
-  grid-template-columns: minmax(400px, 0.6fr) minmax(580px, 1.4fr);
+  grid-template-columns: minmax(440px, 0.72fr) minmax(560px, 1.28fr);
   grid-template-rows: min-content minmax(0, 1fr);
 }
 
@@ -1420,7 +1420,7 @@ h1 {
 }
 
 .workbench-layout.has-results:has(.subtitle-source-summary) {
-  grid-template-columns: minmax(380px, 0.56fr) minmax(580px, 1.44fr);
+  grid-template-columns: minmax(420px, 0.66fr) minmax(560px, 1.34fr);
 }
 
 .workbench-layout.empty-results {
@@ -4617,7 +4617,7 @@ h1 {
 .workbench-layout.has-results .current-segment-main,
 .workbench-layout.has-results .current-segment-card.has-translation .current-segment-main,
 .workbench-layout.has-results .current-segment-card.has-translation:has(.current-media-tools) .current-segment-main {
-  grid-template-columns: minmax(0, 1fr) minmax(288px, 330px);
+  grid-template-columns: minmax(0, 1fr) minmax(276px, 304px);
   grid-template-areas:
     "meta controls"
     "source source"
@@ -6396,7 +6396,7 @@ h1 {
   }
 
   .workbench-layout.has-results {
-    grid-template-columns: minmax(380px, 0.62fr) minmax(0, 1.38fr);
+    grid-template-columns: minmax(420px, 0.72fr) minmax(0, 1.28fr);
   }
 
   .workbench-layout.has-results.no-media-results {
@@ -6404,7 +6404,7 @@ h1 {
   }
 
   .workbench-layout.has-results:has(.subtitle-source-summary) {
-    grid-template-columns: minmax(360px, 0.58fr) minmax(0, 1.42fr);
+    grid-template-columns: minmax(400px, 0.66fr) minmax(0, 1.34fr);
   }
 
   .workbench-layout.empty-results {
