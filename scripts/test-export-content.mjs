@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { parsePlainTextRows, parseSubtitle, parseTimestamp } from "../src/subtitleImport.js";
-import { exportRows, formatClock, formatSrtTime, validateExportRows } from "../src/subtitleExport.js";
+import { exportRows, exportValidationIssue, formatClock, formatSrtTime, validateExportRows } from "../src/subtitleExport.js";
 
 const rows = [
   {
@@ -161,6 +161,18 @@ assert.throws(
   /第 1 条段落与下一条时间重叠/,
   "export validation should reject overlapping timeline ranges",
 );
+assert.equal(
+  exportValidationIssue(new Error("第 1 条段落与下一条时间重叠。")),
+  "timing",
+  "workbench export should classify overlap as a system timing issue instead of a user-facing row chore",
+);
+assert.equal(
+  exportValidationIssue(new Error("第 1 条段落时间无效。")),
+  "timing",
+  "workbench export should classify invalid ranges as system timing issues",
+);
+assert.equal(exportValidationIssue(new Error("第 1 条段落没有原文。")), "empty-source");
+assert.equal(exportValidationIssue(new Error("第 1 条段落没有译文。")), "missing-translation");
 
 assert.equal(
   exportRows(rows, "md", "bilingual"),

@@ -52,6 +52,14 @@ export function validateExportRows(rows, mode = "source") {
   });
 }
 
+export function exportValidationIssue(error) {
+  const message = String(error?.message || error || "");
+  if (/没有原文/.test(message)) return "empty-source";
+  if (/没有译文/.test(message)) return "missing-translation";
+  if (/时间无效|时间重叠/.test(message)) return "timing";
+  return "unknown";
+}
+
 const defaultExportOptions = {
   includeTimecodes: true,
   includeSpeakers: true,

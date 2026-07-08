@@ -47,7 +47,7 @@ import { buildTranslationMessages, formatTermReference, stripWrappingCodeFence }
 import { getCorrectedTextValue, getTranslationValue, parseJsonArrayFromModelText } from "./modelResponse.js";
 import { getSubtitleQualityHints, hasTimingExportIssue, normalizeReviewRows, repairReadableReviewRows, repairReviewStructure, repairReviewStructurePreservingEmpty } from "./reviewRows.js";
 import { parseSubtitle, parseTimestamp } from "./subtitleImport.js";
-import { exportRows, formatClock, validateExportRows } from "./subtitleExport.js";
+import { exportRows, exportValidationIssue, formatClock, validateExportRows } from "./subtitleExport.js";
 import { defaultWorkspaceState, workspaceDefaultsForFeature } from "./workspaceDefaults.js";
 
 const STORAGE_KEYS = {
@@ -3325,12 +3325,12 @@ ${JSON.stringify(chunk.map((row) => ({ id: row.id, start: row.start, end: row.en
   const exportCurrentRows = (format) => {
     let rowsToExport = rows;
     const exportRepair = repairReviewStructureUnlessEmpty(rowsToExport, structureRepairOptions);
+    const repairedRows = exportRepair.rows;
+    if (hasTimingExportIssue(repairedRows)) {
+      setMessage("导出失败：系统未能自动修复时间轴，请重新生成转写或导入有效字幕文件。");
+      return;
+    }
     if (reviewRowsChanged(rowsToExport, exportRepair.rows)) {
-      const repairedRows = exportRepair.rows;
-      if (hasTimingExportIssue(repairedRows)) {
-        setMessage("导出失败：系统未能自动修复时间轴，请重新生成转写或导入有效字幕文件。");
-        return;
-      }
       pushUndoSnapshot("导出前自动修复字幕结构");
       rowsToExport = repairedRows;
       setRows(repairedRows);
@@ -3339,13 +3339,18 @@ ${JSON.stringify(chunk.map((row) => ({ id: row.id, start: row.start, end: row.en
     try {
       validateExportRows(rowsToExport, currentExportMode);
     } catch (error) {
-      if (emptyTextCount > 0) {
+      const issue = exportValidationIssue(error);
+      if (issue === "empty-source" || emptyTextCount > 0) {
         jumpToFirstEmptyText({ showMessage: true });
         return;
       }
-      if ((currentExportMode === "target" || currentExportMode === "bilingual") && !translationComplete) {
+      if (issue === "missing-translation" || ((currentExportMode === "target" || currentExportMode === "bilingual") && !translationComplete)) {
         setMessage(`还有 ${missingTranslationCount} 条没有译文，无法导出${currentExportMode === "target" ? "译文" : "双语"}文件。请先翻译或手动补齐译文。`);
         jumpToFirstMissingTranslation();
+        return;
+      }
+      if (issue === "timing") {
+        setMessage("导出失败：系统未能自动修复时间轴，请重新生成转写或导入有效字幕文件。");
         return;
       }
       setMessage(`导出失败：${error.message || "导出内容不完整"}`);
