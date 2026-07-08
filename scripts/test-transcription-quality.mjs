@@ -248,6 +248,17 @@ assert.ok(
   `trailing Chinese lead-in repair should preserve complete ordered clauses: ${trailingChineseLeadInRows.map((row) => row.text).join(" | ")}`,
 );
 
+const trailingPurposeLeadInRows = normalizeLikeWorkbench([
+  { id: "purpose-a", start: 0, end: 2.2, speaker: "未标注", text: "之前在《鬼魂笔记》中为了", translation: "" },
+  { id: "purpose-b", start: 2.2, end: 5.1, speaker: "未标注", text: "寻找那座桥我们继续调查", translation: "" },
+]);
+assert.deepEqual(
+  trailingPurposeLeadInRows.map((row) => row.text),
+  ["之前在《鬼魂笔记》中", "为了寻找那座桥我们继续调查"],
+  "trailing purpose lead-in should move to the next subtitle row",
+);
+assertWorkbenchQuality(trailingPurposeLeadInRows, "trailing purpose lead-in repair");
+
 const protectedChineseBoundaryCases = [
   {
     label: "semantic question boundary",
@@ -531,6 +542,22 @@ assertCleanTimeline(boundedMediaRepair, "bounded media repair");
 assert.ok(
   boundedMediaRepair.at(-1).end <= 2.2,
   `bounded media repair should not create subtitle timecodes beyond media duration: ${boundedMediaRepair.at(-1).end}`,
+);
+
+const outOfRangeBoundedAsrRepair = repairReviewStructure([
+  { id: "out-a", start: 174.781, end: 180, speaker: "未标注", text: "之前在《鬼魂笔记》中", translation: "" },
+  { id: "out-b", start: 179.4, end: 183, speaker: "未标注", text: "为了", translation: "" },
+  { id: "out-c", start: 183, end: 188, speaker: "未标注", text: "寻找那座桥我们继续调查", translation: "" },
+], { maxEnd: 1 }).rows;
+assertCleanTimeline(outOfRangeBoundedAsrRepair, "out-of-range bounded ASR repair");
+assert.deepEqual(
+  outOfRangeBoundedAsrRepair.map((row) => row.text),
+  ["之前在《鬼魂笔记》中", "为了寻找那座桥我们继续调查"],
+  "out-of-range bounded ASR repair should merge orphan lead-in text into the next subtitle row",
+);
+assert.ok(
+  outOfRangeBoundedAsrRepair.at(-1).end <= 1,
+  `out-of-range bounded ASR repair should fit within media duration: ${outOfRangeBoundedAsrRepair.at(-1).end}`,
 );
 
 const validBoundedAsrTimingRows = repairReviewStructure([

@@ -296,26 +296,39 @@ function fitRowsWithinMaxEnd(inputRows = [], maxEnd = 0) {
   const boundedEnd = Number(maxEnd);
   if (!rows.length || !Number.isFinite(boundedEnd) || boundedEnd <= 0) return rows;
   const lastEnd = Math.max(...rows.map((row) => boundedNumber(row.end, 0)), 0);
-  if (lastEnd <= boundedEnd + 0.001) return rows;
+  const cleanTimeline = rows.every((row, index) => {
+    const start = boundedNumber(row.start, 0);
+    const end = boundedNumber(row.end, start);
+    return end > start && (index === 0 || start >= boundedNumber(rows[index - 1].end, 0) - 0.001);
+  });
+  if (cleanTimeline && lastEnd <= boundedEnd + 0.001) return rows;
 
-  const firstStart = Math.max(0, Math.min(boundedNumber(rows[0].start, 0), boundedEnd));
-  const available = Math.max(0.05 * rows.length, boundedEnd - firstStart);
-  const minimumDuration = Math.min(0.35, Math.max(0.05, (available / rows.length) * 0.35));
-  const totalMinimum = minimumDuration * rows.length;
-  const flexibleDuration = Math.max(0, available - totalMinimum);
+  const originalFirstStart = boundedNumber(rows[0].start, 0);
+  const minimumTotal = Math.min(boundedEnd, 0.05 * rows.length);
+  const firstStart = originalFirstStart > 0
+    && originalFirstStart < boundedEnd
+    && boundedEnd - originalFirstStart >= minimumTotal
+    ? originalFirstStart
+    : 0;
+  const available = Math.max(0.001 * rows.length, boundedEnd - firstStart);
   const weights = rows.map((row) => Math.max(1, subtitleTextLengthForTiming(row.text)));
   const totalWeight = weights.reduce((sum, weight) => sum + weight, 0) || rows.length;
   let cursor = firstStart;
 
   return rows.map((row, index) => {
     const isLast = index === rows.length - 1;
-    const targetDuration = isLast
-      ? Math.max(0.05, boundedEnd - cursor)
-      : minimumDuration + flexibleDuration * (weights[index] / totalWeight);
-    const start = Math.min(cursor, Math.max(0, boundedEnd - 0.05));
-    const end = isLast ? boundedEnd : Math.min(boundedEnd, Math.max(start + 0.05, start + targetDuration));
+    const remainingRows = rows.length - index;
+    const remainingTime = Math.max(0, boundedEnd - cursor);
+    const minimumDuration = Math.min(0.05, Math.max(0.001, remainingTime / Math.max(1, remainingRows)));
+    const maxDuration = isLast
+      ? remainingTime
+      : Math.max(minimumDuration, remainingTime - minimumDuration * (remainingRows - 1));
+    const weightedDuration = available * (weights[index] / totalWeight);
+    const duration = isLast ? remainingTime : Math.min(maxDuration, Math.max(minimumDuration, weightedDuration));
+    const start = cursor;
+    const end = isLast ? boundedEnd : Math.min(boundedEnd, start + duration);
     cursor = end;
-    return { ...row, start, end: Math.max(start + 0.01, end) };
+    return { ...row, start, end: Math.max(start + 0.001, end) };
   });
 }
 

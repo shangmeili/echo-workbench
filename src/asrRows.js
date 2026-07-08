@@ -645,7 +645,7 @@ export function rebalanceEnglishSubtitleRowBoundaries(inputRows = []) {
   return rows;
 }
 
-const cjkTrailingLeadInWords = ["首先", "其次", "然后", "所以", "但是", "不过", "可是", "另外", "接着", "最后"];
+const cjkTrailingLeadInWords = ["首先", "其次", "然后", "所以", "但是", "不过", "可是", "为了", "另外", "接着", "最后"];
 const cjkProtectedBoundaryPhrases = [
   ...protectedCjkSplitPhrases,
   "返回一大段",

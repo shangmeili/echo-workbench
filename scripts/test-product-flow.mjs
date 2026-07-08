@@ -111,6 +111,34 @@ async function readCorrectionTableValues(page) {
   });
 }
 
+function parseReviewTimecode(value) {
+  const match = String(value || "").match(/^(\d{2}):(\d{2})\.(\d{3})$/);
+  if (!match) return null;
+  return Number(match[1]) * 60 + Number(match[2]) + Number(match[3]) / 1000;
+}
+
+async function readReviewTimeRanges(page) {
+  return page.evaluate(() => [...document.querySelectorAll(".review-list-row")].map((row) => {
+    const text = row.innerText || "";
+    const match = text.match(/(\d{2}:\d{2}\.\d{3})\s*[-–]\s*(\d{2}:\d{2}\.\d{3})/);
+    return match ? { start: match[1], end: match[2], text } : null;
+  }).filter(Boolean));
+}
+
+function assertNoReviewTimeOverlap(ranges, label) {
+  assert.ok(ranges.length > 0, `${label}: should expose review time ranges`);
+  let previousEnd = -Infinity;
+  ranges.forEach((range, index) => {
+    const start = parseReviewTimecode(range.start);
+    const end = parseReviewTimecode(range.end);
+    assert.notEqual(start, null, `${label}: row ${index + 1} should have a parseable start time`);
+    assert.notEqual(end, null, `${label}: row ${index + 1} should have a parseable end time`);
+    assert.ok(end > start, `${label}: row ${index + 1} should have valid timing: ${range.start} - ${range.end}`);
+    assert.ok(start >= previousEnd, `${label}: row ${index + 1} should not overlap previous row: ${range.start} < ${previousEnd}`);
+    previousEnd = end;
+  });
+}
+
 async function readWorkbenchFeedback(page) {
   return page.evaluate(() => [...document.querySelectorAll(".message, .workbench-toast")].map((node) => node.textContent || "").join("\n"));
 }
@@ -2124,6 +2152,21 @@ try {
       await route.abort("connectionfailed");
       return;
     }
+    if (asrMode === "orphanCjk") {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          segments: [
+            { start: 174.781, end: 180, text: "之前在《鬼魂笔记》中" },
+            { start: 179.4, end: 183, text: "为了" },
+            { start: 183, end: 188, text: "寻找那座桥我们继续调查" },
+          ],
+          provider: "product-flow-mock-asr",
+        }),
+      });
+      return;
+    }
     await route.fulfill({
       status: 200,
       contentType: "application/json",
@@ -2385,10 +2428,27 @@ try {
   await page.waitForLoadState("networkidle");
   await chooseFile(page, page.getByRole("button", { name: "上传音频", exact: true }).first(), sampleAudioPath);
   await page.waitForTimeout(600);
+  asrMode = "orphanCjk";
+  await assert.doesNotReject(() => page.getByRole("button", { name: /开始转写/ }).first().click());
+  await page.waitForFunction(() => document.querySelector(".subtitle-table .table-row:not(.table-head)"));
+  assert.equal(asrRequestCount, 11);
+  const repairedOrphanCjkTable = await readCorrectionTableValues(page);
+  assert.match(repairedOrphanCjkTable, /为了寻找那座桥我们继续调查/);
+  assert.doesNotMatch(repairedOrphanCjkTable, /\n为了\n|时间重叠|时间无效|单条过长|阅读过快|时长过短/);
+  assert.equal(await page.locator(".subtitle-table .table-row").count() - 1, 2);
+  assertNoReviewTimeOverlap(await readReviewTimeRanges(page), "bounded orphan Chinese ASR repair");
+  await assertWorkbenchLayout(page, { title: "音频转写", startExpected: true, hasResults: true });
+  asrMode = "normal";
+
+  await page.getByRole("navigation").getByRole("button", { name: "首页" }).click();
+  await page.getByText("音频转写", { exact: true }).click();
+  await page.waitForLoadState("networkidle");
+  await chooseFile(page, page.getByRole("button", { name: "上传音频", exact: true }).first(), sampleAudioPath);
+  await page.waitForTimeout(600);
   const startButton = page.getByRole("button", { name: /开始转写/ }).first();
   await assert.doesNotReject(() => startButton.click());
   await page.waitForTimeout(1200);
-  assert.equal(asrRequestCount, 11);
+  assert.equal(asrRequestCount, 12);
   assert.equal(await page.locator(".subtitle-table .table-row").count() - 1, 2);
   assert.match(await readCorrectionTableValues(page), /音频转写第一句/);
   assert.deepEqual(await readCorrectionTableMode(page), { sourceOnly: true, withTranslation: false, translationEditors: 0 });
