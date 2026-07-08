@@ -892,7 +892,7 @@ export function groupWordsToRows(words) {
     }
     group = [];
   };
-  words.forEach((word) => {
+  words.forEach((word, index) => {
     group.push(word);
     const text = joinAsrTokens(group);
     const duration = wordEnd(group.at(-1)) - wordStart(group[0]);
@@ -900,10 +900,17 @@ export function groupWordsToRows(words) {
     const sentenceBoundary = isSentenceClosed(text) && !endsWithProtectedAbbreviation(text);
     const readableLimit = maxMergedUnits(text);
     const lastWord = text.split(/\s+/).at(-1) || "";
+    const nextWord = words[index + 1];
+    const nextCleanWord = cleanEnglishWord(wordText(nextWord));
+    const nextGap = nextWord ? wordStart(nextWord) - wordEnd(word) : 0;
+    const pauseBeforeEnglishBreak = isLatinText(text)
+      && units >= 4
+      && nextGap >= 0.25
+      && englishBreakBeforeWords.has(nextCleanWord);
     const weakEnglishEnding = isLatinText(text) && isWeakEnglishBoundaryEnding(lastWord);
     const lengthBoundary = units >= readableLimit && (!weakEnglishEnding || units >= readableLimit + 4);
     const durationBoundary = duration >= 4.8 && (!weakEnglishEnding || duration >= 6.2);
-    if (sentenceBoundary || lengthBoundary || durationBoundary) flush();
+    if (sentenceBoundary || pauseBeforeEnglishBreak || lengthBoundary || durationBoundary) flush();
   });
   flush();
   return rows;
@@ -1103,6 +1110,43 @@ function repairCoarseSegmentTiming(rows, fallbackDuration = 0) {
   return repairAsrTimeline(validRows);
 }
 
+function asrRowStructureScore(rows = []) {
+  if (!Array.isArray(rows) || !rows.length) return Number.POSITIVE_INFINITY;
+  let score = 0;
+  rows.forEach((row, index) => {
+    const text = normalizeAsrText(row?.text || "");
+    const start = finiteNumber(row?.start, 0);
+    const end = finiteNumber(row?.end, start);
+    const duration = end - start;
+    const units = transcriptWeight(text);
+    const limit = maxMergedUnits(text);
+    const next = rows[index + 1];
+    if (!text) score += 100;
+    if (duration <= 0) score += 100;
+    if (next && finiteNumber(next.start, end) < end - 0.02) score += 100;
+    if (units > limit) score += (units - limit) * 4;
+    if (duration > 0 && units / duration > 18) score += (units / duration - 18) * 2;
+    if (duration > 7.5 && !isSentenceClosed(text)) score += duration - 7.5;
+    if (isLatinText(text) && isWeakEnglishBoundaryEnding(text.split(/\s+/).at(-1))) score += 6;
+  });
+  return score / Math.max(rows.length, 1);
+}
+
+function chooseAsrRows(segmentRows = [], wordRows = [], options = {}) {
+  if (!segmentRows.length) return wordRows;
+  if (!wordRows.length) return segmentRows;
+  const segmentScore = asrRowStructureScore(segmentRows);
+  const wordScore = asrRowStructureScore(wordRows);
+  const segmentHasCoarseRows = segmentRows.some((row) => {
+    const text = normalizeAsrText(row?.text || "");
+    return transcriptWeight(text) > maxMergedUnits(text) || rowDuration(row) > 7.5;
+  });
+  if (wordScore + 0.5 < segmentScore) return wordRows;
+  if (options.coarseSourceSegments && wordScore <= segmentScore + 8 && wordRows.length >= segmentRows.length) return wordRows;
+  if (segmentHasCoarseRows && wordScore <= segmentScore + 0.5 && wordRows.length >= segmentRows.length) return wordRows;
+  return segmentRows;
+}
+
 function isShortFragment(row) {
   const text = normalizeAsrText(row?.text || "");
   if (!text || isSentenceClosed(text)) return false;
@@ -1201,16 +1245,24 @@ export function mergeShortAdjacentAsrRows(rows, options = {}) {
 }
 
 export function rowsFromAsrResult(result, fallbackDuration = 0) {
+  let wordRows = [];
+  if (Array.isArray(result?.words) && result.words.length) {
+    const words = scaleTimedItems(result.words, timingScaleForItems(result.words, fallbackDuration));
+    wordRows = repairAsrTimeline(mergeShortAdjacentAsrRows(groupWordsToRows(words), { maxGapSeconds: 0.85, maxCombinedDuration: 5.8 }));
+  }
   if (Array.isArray(result?.segments) && result.segments.length) {
     const segments = scaleTimedItems(result.segments, timingScaleForItems(result.segments, fallbackDuration), { scaleExplicitFields: false });
     const rows = segments.flatMap((segment, index) => rowsFromSegment(segment, index));
-    return repairCoarseSegmentTiming(rows, fallbackDuration);
+    const coarseSourceSegments = segments.some((segment) => {
+      const text = segmentText(segment);
+      const [timestampStart, timestampEnd] = timestampPair(segment);
+      const start = finiteNumber(segment?.start ?? segment?.start_time ?? segment?.startTime ?? timestampStart, 0);
+      const end = finiteNumber(segment?.end ?? segment?.end_time ?? segment?.endTime ?? timestampEnd, start);
+      return transcriptWeight(text) > maxMergedUnits(text) || end - start > 7.5;
+    });
+    return chooseAsrRows(repairCoarseSegmentTiming(rows, fallbackDuration), wordRows, { coarseSourceSegments });
   }
-  if (Array.isArray(result?.words) && result.words.length) {
-    const words = scaleTimedItems(result.words, timingScaleForItems(result.words, fallbackDuration));
-    const rows = repairAsrTimeline(groupWordsToRows(words));
-    if (rows.length) return rows;
-  }
+  if (wordRows.length) return wordRows;
   const sentences = splitTranscriptIntoSentences(result?.text || result?.transcript || "");
   if (!sentences.length) return [];
   const duration = resolveUntimedTranscriptDuration(sentences, fallbackDuration);

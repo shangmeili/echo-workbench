@@ -473,6 +473,52 @@ assert.deepEqual(
   "word-level millisecond timestamp arrays should be normalized to seconds",
 );
 
+const mixedSegmentAndWordRows = rowsFromAsrResult({
+  segments: [
+    {
+      start: 0,
+      end: 8,
+      text: "I have spent the last three weeks sending people into that river to look for that bell and they have not found a thing",
+    },
+  ],
+  words: [
+    { word: "I", start: 0, end: 0.2 },
+    { word: "have", start: 0.2, end: 0.45 },
+    { word: "spent", start: 0.45, end: 0.8 },
+    { word: "the", start: 0.8, end: 1.0 },
+    { word: "last", start: 1.0, end: 1.25 },
+    { word: "three", start: 1.25, end: 1.55 },
+    { word: "weeks", start: 1.55, end: 1.95 },
+    { word: "sending", start: 1.95, end: 2.4 },
+    { word: "people", start: 2.4, end: 2.8 },
+    { word: "into", start: 2.8, end: 3.05 },
+    { word: "that", start: 3.05, end: 3.25 },
+    { word: "river", start: 3.25, end: 3.65 },
+    { word: "to", start: 4.1, end: 4.25 },
+    { word: "look", start: 4.25, end: 4.55 },
+    { word: "for", start: 4.55, end: 4.75 },
+    { word: "that", start: 4.75, end: 4.95 },
+    { word: "bell", start: 4.95, end: 5.25 },
+    { word: "and", start: 5.8, end: 6.0 },
+    { word: "they", start: 6.0, end: 6.25 },
+    { word: "have", start: 6.25, end: 6.5 },
+    { word: "not", start: 6.5, end: 6.75 },
+    { word: "found", start: 6.75, end: 7.15 },
+    { word: "a", start: 7.15, end: 7.3 },
+    { word: "thing", start: 7.3, end: 7.8 },
+  ],
+}, 8);
+
+assert.deepEqual(
+  mixedSegmentAndWordRows.map((row) => ({ start: row.start, end: row.end, text: row.text })),
+  [
+    { start: 0, end: 3.65, text: "I have spent the last three weeks sending people into that river" },
+    { start: 4.1, end: 5.25, text: "to look for that bell" },
+    { start: 5.8, end: 7.8, text: "and they have not found a thing" },
+  ],
+  "when a service returns coarse segments and precise words, ASR rows should use word-level subtitle boundaries",
+);
+
 const segmentRows = rowsFromAsrResult({
   segments: [
     { start_time: 0, end_time: 2.4, speaker_label: "S1", transcript: "第一段转写" },
