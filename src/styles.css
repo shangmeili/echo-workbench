@@ -1812,7 +1812,7 @@ h1 {
 .workbench-layout.has-results .media-preview {
   flex: 1 1 auto;
   min-height: 0;
-  padding: 8px 12px 10px;
+  padding: 6px 6px 8px;
   gap: 8px;
 }
 
@@ -1831,6 +1831,31 @@ h1 {
   width: 100%;
   height: 100%;
   object-fit: contain;
+}
+
+.workbench-layout.has-results .video-subtitle-preview {
+  bottom: 36px;
+  width: calc(100% - 16px);
+  gap: 3px;
+}
+
+.workbench-layout.has-results .video-subtitle-preview span,
+.workbench-layout.has-results .media-preview .video-subtitle-preview span {
+  max-width: 100%;
+  padding: 3px 7px;
+  border-radius: 6px;
+  background: rgba(12, 18, 34, 0.7);
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.55);
+  font-size: clamp(10px, 0.72vw, 12px);
+  font-weight: 650;
+  line-height: 1.35;
+}
+
+.workbench-layout.has-results .video-subtitle-preview.bilingual span + span,
+.workbench-layout.has-results .media-preview .video-subtitle-preview.bilingual span + span {
+  font-size: clamp(9px, 0.66vw, 11px);
+  font-weight: 600;
+  background: rgba(12, 18, 34, 0.62);
 }
 
 .workbench-layout.has-results .media-preview > div:not(.video-preview-frame):not(.audio-track-box) span {
@@ -6507,6 +6532,11 @@ h1 {
   .media-preview,
   .draft-panel textarea {
     margin: 18px;
+  }
+
+  .workbench-layout.has-results .media-preview {
+    margin: 6px 8px 8px;
+    padding: 4px;
   }
 
   .dropzone {

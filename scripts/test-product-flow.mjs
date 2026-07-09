@@ -370,6 +370,10 @@ async function inspectWorkbenchLayout(page) {
     const table = document.querySelector(".subtitle-table");
     const textStackRect = document.querySelector(".subtitle-text-stack")?.getBoundingClientRect();
     const draftRect = document.querySelector(".draft-panel")?.getBoundingClientRect();
+    const videoFrameRect = document.querySelector(".media-preview .video-preview-frame")?.getBoundingClientRect();
+    const subtitlePreviewSpan = document.querySelector(".media-preview .video-subtitle-preview span");
+    const subtitlePreviewRect = subtitlePreviewSpan?.getBoundingClientRect();
+    const subtitlePreviewStyle = subtitlePreviewSpan ? getComputedStyle(subtitlePreviewSpan) : null;
     const currentSegmentRect = document.querySelector(".current-segment-card")?.getBoundingClientRect();
     const currentEditTextareaRect = document.querySelector(".current-segment-card .current-edit-field textarea")?.getBoundingClientRect();
     const currentSegmentControlsRect = document.querySelector(".current-segment-card .current-segment-controls")?.getBoundingClientRect();
@@ -428,6 +432,12 @@ async function inspectWorkbenchLayout(page) {
       statusOverlapsStart: intersects(statusRect, startRect),
       mediaWidth: Number(mediaRect?.width || 0),
       mediaHeight: Number(mediaRect?.height || 0),
+      videoFrameWidth: Number(videoFrameRect?.width || 0),
+      videoFrameHeight: Number(videoFrameRect?.height || 0),
+      videoFrameToMediaRatio: Number(mediaRect && videoFrameRect ? (videoFrameRect.width / mediaRect.width).toFixed(3) : 0),
+      subtitlePreviewFontSize: Number.parseFloat(subtitlePreviewStyle?.fontSize || "0"),
+      subtitlePreviewLineHeight: Number.parseFloat(subtitlePreviewStyle?.lineHeight || "0"),
+      subtitlePreviewInsideFrame: Boolean(subtitlePreviewRect && withinRect(subtitlePreviewRect, videoFrameRect)),
       controlWidth: Number(controlRect?.width || 0),
       controlHeight: Number(controlRect?.height || 0),
       previewReadableWidth: Number(previewRect?.width || 0),
@@ -537,6 +547,13 @@ async function assertWorkbenchLayout(page, { title, startExpected, hasResults = 
       assert.ok(layout.mediaWidth >= 300 && layout.mediaWidth <= 430, `${title} media preview column should stay compact in result state, got ${layout.mediaWidth}`);
       assert.ok(layout.editorWidth >= layout.mediaWidth * 1.75 && layout.editorWidth <= layout.mediaWidth * 2.35, `${title} result-state layout should prioritize proofreading at roughly 3:7 left/right, got media ${layout.mediaWidth}, editor ${layout.editorWidth}`);
       assert.ok(layout.mediaHeight >= layout.controlHeight * 1.05 && layout.mediaHeight <= layout.controlHeight * 1.55, `${title} result-state media preview should receive slightly more height than processing settings, got media ${layout.mediaHeight}, controls ${layout.controlHeight}`);
+      if (layout.videoFrameWidth > 0) {
+        assert.ok(layout.videoFrameToMediaRatio >= 0.88, `${title} result-state video frame should use the narrow media card width, got ratio ${layout.videoFrameToMediaRatio}`);
+      }
+      if (layout.subtitlePreviewFontSize > 0) {
+        assert.ok(layout.subtitlePreviewFontSize >= 10 && layout.subtitlePreviewFontSize <= 13, `${title} video subtitle preview font should stay compact in result state, got ${layout.subtitlePreviewFontSize}px`);
+        assert.equal(layout.subtitlePreviewInsideFrame, true, `${title} video subtitle preview should stay inside the video frame`);
+      }
     } else if (expectsMediaPanel) {
       const minSummaryWidth = title === "字幕文件翻译" ? 300 : 320;
       assert.ok(layout.mediaWidth >= minSummaryWidth && layout.mediaWidth <= 420, `${title} summary/media column should stay compact, got media column ${layout.mediaWidth}`);
