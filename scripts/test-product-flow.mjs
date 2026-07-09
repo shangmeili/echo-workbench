@@ -534,8 +534,8 @@ async function assertWorkbenchLayout(page, { title, startExpected, hasResults = 
       assert.equal(layout.quickStateSharesActionTitleRow, true, `${title} text-only result state should keep segment/export status in the processing header row`);
     }
     if (layout.hasMediaPreview) {
-      assert.ok(layout.mediaWidth >= 470 && layout.mediaWidth <= 640, `${title} media preview column should stay readable after results exist while slightly reducing the proofreading column, got ${layout.mediaWidth}`);
-      assert.ok(layout.mediaWidth >= layout.editorWidth * 1.08 && layout.mediaWidth <= layout.editorWidth * 1.32, `${title} result-state media and proofreading columns should stay close to balanced with the right side slightly reduced, got media ${layout.mediaWidth}, editor ${layout.editorWidth}`);
+      assert.ok(layout.mediaWidth >= 300 && layout.mediaWidth <= 430, `${title} media preview column should stay compact in result state, got ${layout.mediaWidth}`);
+      assert.ok(layout.editorWidth >= layout.mediaWidth * 1.75 && layout.editorWidth <= layout.mediaWidth * 2.35, `${title} result-state layout should prioritize proofreading at roughly 3:7 left/right, got media ${layout.mediaWidth}, editor ${layout.editorWidth}`);
       assert.ok(layout.mediaHeight >= layout.controlHeight * 1.05 && layout.mediaHeight <= layout.controlHeight * 1.55, `${title} result-state media preview should receive slightly more height than processing settings, got media ${layout.mediaHeight}, controls ${layout.controlHeight}`);
     } else if (expectsMediaPanel) {
       const minSummaryWidth = title === "字幕文件翻译" ? 300 : 320;
