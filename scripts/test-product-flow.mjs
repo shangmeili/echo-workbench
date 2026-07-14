@@ -371,10 +371,12 @@ async function inspectWorkbenchLayout(page) {
     const textStackRect = document.querySelector(".subtitle-text-stack")?.getBoundingClientRect();
     const draftRect = document.querySelector(".draft-panel")?.getBoundingClientRect();
     const videoFrameRect = document.querySelector(".media-preview .video-preview-frame")?.getBoundingClientRect();
+    const mediaInfoRect = document.querySelector(".media-preview > div:not(.video-preview-frame):not(.audio-track-box)")?.getBoundingClientRect();
     const subtitlePreviewSpan = document.querySelector(".media-preview .video-subtitle-preview span");
     const subtitlePreviewRect = subtitlePreviewSpan?.getBoundingClientRect();
     const subtitlePreviewStyle = subtitlePreviewSpan ? getComputedStyle(subtitlePreviewSpan) : null;
     const currentSegmentRect = document.querySelector(".current-segment-card")?.getBoundingClientRect();
+    const currentEditLabelRect = document.querySelector(".current-segment-card .current-edit-field > span")?.getBoundingClientRect();
     const currentEditTextareaRect = document.querySelector(".current-segment-card .current-edit-field textarea")?.getBoundingClientRect();
     const currentSegmentControlsRect = document.querySelector(".current-segment-card .current-segment-controls")?.getBoundingClientRect();
     const currentNavToolsRect = document.querySelector(".current-segment-card .current-nav-tools")?.getBoundingClientRect();
@@ -406,6 +408,7 @@ async function inspectWorkbenchLayout(page) {
       translationEditorCount: document.querySelectorAll(".subtitle-text-stack label:nth-child(2) textarea").length,
       controlTitle: controlPanel?.querySelector(".panel-head h2")?.textContent?.trim() || "",
       hasDuplicateFormatExportInControls: Boolean(controlPanel?.querySelector(".export-row")),
+      hasInlineWorkbenchMessage: Boolean(document.querySelector(".workbench-layout.has-results .workbench-work-area > .message")),
       hasInlineSuccessMessage: Boolean(document.querySelector(".workbench-layout.has-results .message:not(.error)")),
       hasTopManualImportButton: [...document.querySelectorAll(".media-panel-tools button")].some((button) => button.textContent?.includes("导入已有文本")),
       hasToast: Boolean(document.querySelector(".workbench-toast")),
@@ -435,6 +438,7 @@ async function inspectWorkbenchLayout(page) {
       videoFrameWidth: Number(videoFrameRect?.width || 0),
       videoFrameHeight: Number(videoFrameRect?.height || 0),
       videoFrameToMediaRatio: Number(mediaRect && videoFrameRect ? (videoFrameRect.width / mediaRect.width).toFixed(3) : 0),
+      mediaBlankAfterPreview: Number(mediaRect && mediaInfoRect ? Math.max(0, mediaRect.bottom - mediaInfoRect.bottom) : 0),
       subtitlePreviewFontSize: Number.parseFloat(subtitlePreviewStyle?.fontSize || "0"),
       subtitlePreviewLineHeight: Number.parseFloat(subtitlePreviewStyle?.lineHeight || "0"),
       subtitlePreviewInsideFrame: Boolean(subtitlePreviewRect && withinRect(subtitlePreviewRect, videoFrameRect)),
@@ -453,6 +457,7 @@ async function inspectWorkbenchLayout(page) {
       currentNavToolsHeight: Number(currentNavToolsRect?.height || 0),
       hasCurrentMediaTools: Boolean(document.querySelector(".current-segment-card .current-media-tools")),
       confirmNextHeight: Number(confirmNextRect?.height || 0),
+      currentEditLabelOverlapsTextarea: intersects(currentEditLabelRect, currentEditTextareaRect),
       currentEditTextareaHeight: Number(currentEditTextareaRect?.height || 0),
       currentEditTextareaWidth: Number(currentEditTextareaRect?.width || 0),
       reviewListHeight: Number(reviewListRect?.height || 0),
@@ -504,6 +509,7 @@ async function assertWorkbenchLayout(page, { title, startExpected, hasResults = 
   if (hasResults) {
     assert.equal(layout.isSourceOnlyCorrectionTable || layout.usesTranslationStack, true, `${title} correction table should declare source-only or translation layout`);
     assert.equal(layout.hasDuplicateFormatExportInControls, false, `${title} should keep format export in the top bar, not duplicate it inside processing settings`);
+    assert.equal(layout.hasInlineWorkbenchMessage, false, `${title} result-state feedback should not consume workbench layout space`);
     assert.equal(layout.hasInlineSuccessMessage, false, `${title} should show routine success feedback as toast, not as an inline card that consumes workbench space`);
   }
   assert.equal(layout.controlTitle.includes("后处理"), false, `${title} should not describe transcription controls as post-processing`);
@@ -546,7 +552,9 @@ async function assertWorkbenchLayout(page, { title, startExpected, hasResults = 
     if (layout.hasMediaPreview) {
       assert.ok(layout.mediaWidth >= 300 && layout.mediaWidth <= 430, `${title} media preview column should stay compact in result state, got ${layout.mediaWidth}`);
       assert.ok(layout.editorWidth >= layout.mediaWidth * 1.75 && layout.editorWidth <= layout.mediaWidth * 2.35, `${title} result-state layout should prioritize proofreading at roughly 3:7 left/right, got media ${layout.mediaWidth}, editor ${layout.editorWidth}`);
-      assert.ok(layout.mediaHeight >= layout.controlHeight * 1.05 && layout.mediaHeight <= layout.controlHeight * 1.55, `${title} result-state media preview should receive slightly more height than processing settings, got media ${layout.mediaHeight}, controls ${layout.controlHeight}`);
+      const minMediaHeight = layout.videoFrameWidth > 0 ? 280 : 200;
+      assert.ok(layout.mediaHeight >= minMediaHeight && layout.mediaHeight <= 430, `${title} media card should fit its preview content without reserving a tall blank panel, got ${layout.mediaHeight}`);
+      assert.ok(layout.mediaBlankAfterPreview <= 36, `${title} media card should not leave unused blank space after preview metadata, got ${layout.mediaBlankAfterPreview}`);
       if (layout.videoFrameWidth > 0) {
         assert.ok(layout.videoFrameToMediaRatio >= 0.88, `${title} result-state video frame should use the narrow media card width, got ratio ${layout.videoFrameToMediaRatio}`);
       }
@@ -560,8 +568,9 @@ async function assertWorkbenchLayout(page, { title, startExpected, hasResults = 
       assert.ok(layout.editorWidth >= 620, `${title} text-only result state should keep a wider proofreading area, got editor ${layout.editorWidth}`);
     }
     if (expectsMediaPanel) assert.ok(layout.mediaHeight <= 470, `${title} media panel should stay compact after results exist, got ${layout.mediaHeight}`);
-    assert.ok(layout.currentSegmentHeight <= (layout.usesTranslationStack ? 180 : 160), `${title} current segment editor should stay compact enough for long-form proofreading while keeping row tools clickable, got ${layout.currentSegmentHeight}`);
+    assert.ok(layout.currentSegmentHeight <= (layout.usesTranslationStack ? 220 : 176), `${title} current segment editor should stay compact enough for long-form proofreading while keeping row tools clickable, got ${layout.currentSegmentHeight}`);
     assert.ok(layout.currentEditTextareaHeight >= 36, `${title} current segment editor should provide a real compact proofreading input, got ${layout.currentEditTextareaHeight}`);
+    assert.equal(layout.currentEditLabelOverlapsTextarea, false, `${title} current segment field label should not cover editable text`);
     assert.ok(layout.confirmNextHeight <= 32, `${title} confirm action should be a compact workbench button, got ${layout.confirmNextHeight}`);
     assert.equal(layout.currentSegmentControlsInsideCard, true, `${title} current segment controls should stay inside the active proofreading card: ${JSON.stringify(layout)}`);
     assert.equal(layout.currentRowToolsInsideCard, true, `${title} split/merge/retranslate/delete controls should stay inside the active proofreading card: ${JSON.stringify(layout)}`);
@@ -577,7 +586,7 @@ async function assertWorkbenchLayout(page, { title, startExpected, hasResults = 
     }
     if (!layout.hasCurrentMediaTools && !layout.usesTranslationStack) {
       assert.ok(layout.currentNavToolsHeight <= 34, `${title} no-media source-only segment navigation should stay in a compact single row, got ${layout.currentNavToolsHeight}`);
-      assert.ok(layout.currentSegmentHeight <= 145, `${title} source-only current segment editor should not crowd the review list while reserving space for row tools, got ${layout.currentSegmentHeight}`);
+      assert.ok(layout.currentSegmentHeight <= 176, `${title} source-only current segment editor should remain readable without crowding the review list, got ${layout.currentSegmentHeight}`);
     }
     if (layout.usesTranslationStack) {
       assert.ok(layout.currentSegmentControlsHeight <= 96, `${title} bilingual current segment controls should fit beside the two editable text rows, got ${layout.currentSegmentControlsHeight}`);

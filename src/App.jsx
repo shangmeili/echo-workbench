@@ -1775,13 +1775,16 @@ function WorkbenchView({ activeTool, onBackHome, rows, setRows, media, setMedia,
     }
   }, [workspaceNotice]);
 
+  const showInlineWorkbenchMessage = Boolean(message && shouldShowInlineWorkbenchMessage(message) && rows.length === 0);
+  const showFloatingWorkbenchMessage = Boolean(message && !showInlineWorkbenchMessage);
+
   useEffect(() => {
-    if (!message || shouldShowInlineWorkbenchMessage(message)) return undefined;
+    if (!message || showInlineWorkbenchMessage) return undefined;
     const timeout = window.setTimeout(() => {
       setMessage((current) => (current === message ? "" : current));
     }, 4200);
     return () => window.clearTimeout(timeout);
-  }, [message]);
+  }, [message, showInlineWorkbenchMessage]);
 
   useEffect(() => {
     const previousRowsLength = previousRowsLengthRef.current;
@@ -4192,8 +4195,8 @@ ${JSON.stringify(chunk.map((row) => ({ id: row.id, start: row.start, end: row.en
               </div>
             )}
 
-            {message && shouldShowInlineWorkbenchMessage(message) && <div className={`message ${isErrorMessage(message) ? "error" : ""}`}>{message}</div>}
-            {message && !shouldShowInlineWorkbenchMessage(message) && <div className="workbench-toast" role="status" aria-live="polite">{message}</div>}
+            {showInlineWorkbenchMessage && <div className={`message ${isErrorMessage(message) ? "error" : ""}`}>{message}</div>}
+            {showFloatingWorkbenchMessage && <div className={`workbench-toast ${isErrorMessage(message) ? "error" : ""}`} role={isErrorMessage(message) ? "alert" : "status"} aria-live="polite">{message}</div>}
 
             {rows.length > 0 && (
             <section className="panel subtitle-editor">

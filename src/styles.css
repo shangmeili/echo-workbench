@@ -1412,7 +1412,7 @@ h1 {
 .workbench-layout.has-results {
   height: 100%;
   grid-template-columns: minmax(320px, 3fr) minmax(0, 7fr);
-  grid-template-rows: minmax(0, 0.575fr) minmax(0, 0.425fr);
+  grid-template-rows: auto minmax(0, 1fr);
 }
 
 .workbench-layout.has-results.no-media-results {
@@ -1563,7 +1563,8 @@ h1 {
   grid-column: 1;
   grid-row: 1;
   min-height: 0;
-  align-self: stretch;
+  height: fit-content;
+  align-self: start;
   max-height: none;
   overflow: hidden;
 }
@@ -1573,7 +1574,8 @@ h1 {
   grid-row: 2;
   position: relative;
   top: auto;
-  align-self: stretch;
+  height: fit-content;
+  align-self: start;
   min-height: 0;
   max-height: 100%;
   overflow: hidden;
@@ -1810,7 +1812,7 @@ h1 {
 }
 
 .workbench-layout.has-results .media-preview {
-  flex: 1 1 auto;
+  flex: 0 0 auto;
   min-height: 0;
   padding: 6px 6px 8px;
   gap: 8px;
@@ -3278,7 +3280,9 @@ h1 {
   right: 28px;
   bottom: 24px;
   z-index: 30;
-  max-width: min(520px, calc(100vw - 320px));
+  max-width: min(420px, calc(100vw - 320px));
+  max-height: 180px;
+  overflow: auto;
   padding: 12px 14px;
   color: #155e53;
   border: 1px solid rgba(25, 184, 170, 0.24);
@@ -3288,6 +3292,12 @@ h1 {
   font-size: 13px;
   line-height: 1.55;
   backdrop-filter: blur(14px);
+}
+
+.workbench-toast.error {
+  color: #9f2a1d;
+  border-color: rgba(244, 63, 94, 0.28);
+  background: rgba(255, 247, 247, 0.97);
 }
 
 .result-preview-panel pre {
@@ -4670,6 +4680,31 @@ h1 {
     "translation translation";
   gap: 6px 10px;
   align-items: start;
+}
+
+.workbench-layout.has-results .current-edit-field {
+  gap: 4px;
+}
+
+.workbench-layout.has-results .current-edit-field > span {
+  position: static;
+  min-height: 0;
+  width: fit-content;
+  padding: 0;
+  color: #5f6476;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  font-size: 12px;
+  line-height: 1.2;
+  font-weight: 850;
+}
+
+.workbench-layout.has-results .current-segment-card .subtitle-source-textarea,
+.workbench-layout.has-results .current-segment-card .subtitle-translation-textarea,
+.workbench-layout.has-results .current-segment-card.has-translation .subtitle-source-textarea,
+.workbench-layout.has-results .current-segment-card.has-translation .subtitle-translation-textarea {
+  padding: 7px 9px;
 }
 
 .workbench-layout.has-results .current-segment-controls,
